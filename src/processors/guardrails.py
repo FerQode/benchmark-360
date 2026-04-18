@@ -11,7 +11,7 @@ import html
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from loguru import logger
 
@@ -32,7 +32,7 @@ class GuardrailResult:
     risk_level: RiskLevel
     detected_signatures: list[str] = field(default_factory=list)
     sanitized_text: str = ""
-    inspected_at: datetime = field(default_factory=datetime.now)
+    inspected_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class GuardrailsEngine:
@@ -52,7 +52,7 @@ class GuardrailsEngine:
             r"(?i)\bDROP\b\s+(?i)TABLE\b", r"(?i)\bINSERT\b\s+(?i)INTO\b",
             r"(?i)\bDELETE\b\s+(?i)FROM\b", r"(?i)\bUPDATE\b\s+.*\bSET\b",
             r"(?i)\bTRUNCATE\b\s+(?i)TABLE\b", r"(?i)\bALTER\b\s+(?i)TABLE\b",
-            r"' OR '1'='1", r"\" OR \"1\"=\"1",
+            r"(?i)'\s*OR\s*'1'\s*=\s*'1", r"(?i)\"\s*OR\s*\"1\"\s*=\s*\"1",
         ],
         "xss_injection": [
             r"(?i)<script[^>]*>.*?</script>", r"(?i)javascript:",
@@ -70,17 +70,22 @@ class GuardrailsEngine:
     }
 
     def inspect(self, text: str) -> GuardrailResult:
-        """Run all 4 layers of defense on the input text."""
+        """Run all defense layers. Score is capped per category (not per match)."""
         sanitized = self._sanitize(text)
         
         score = 0
-        detected = []
+        detected: set[str] = set()
         
+        # Test original text for signatures so we score based on what was there
         for category, patterns in self._SIGNATURES.items():
+            category_hit = False
             for pattern in patterns:
-                if re.search(pattern, sanitized):
-                    score += 10
-                    detected.append(category)
+                # Need to test on html.unescaped to find encoded attacks
+                if re.search(pattern, html.unescape(text)):
+                    if not category_hit:
+                        score += 10
+                        category_hit = True
+                    detected.add(category)
                     
         # Calculate risk level
         if score == 0:
@@ -98,28 +103,82 @@ class GuardrailsEngine:
             is_safe=(level in [RiskLevel.SAFE, RiskLevel.LOW]),
             risk_score=score,
             risk_level=level,
-            detected_signatures=list(set(detected)),
+            detected_signatures=list(detected),
             sanitized_text=sanitized
         )
         
         if result.is_safe:
-            logger.info(f"Guardrail check passed with SAFE/LOW risk score: {score}")
+            logger.info("Guardrail check passed with SAFE/LOW risk score: {}", score)
         else:
-            logger.warning(f"Guardrail check failed! Risk Level: {level.name}, Score: {score}")
+            logger.warning("Guardrail check failed! Risk Level: {}, Score: {}", level.name, score)
             
         return result
 
     def _sanitize(self, text: str) -> str:
-        """Layer 1: Sanitize input by unescaping HTML and removing basic tags."""
-        # Unescape HTML entities (e.g., &amp; -> &, &lt; -> <)
-        text = html.unescape(text)
-        return text
+        """Layer 1: Unescape HTML entities and strip dangerous content.
 
-    def validate_llm_output(self, output: str) -> bool:
-        """Validate that the LLM output is structurally sound JSON."""
-        try:
-            json.loads(output)
-            return True
-        except json.JSONDecodeError as exc:
-            logger.error(f"LLM output validation failed: invalid JSON. {exc}")
-            return False
+        Converts HTML entities to their characters first (so encoded
+        payloads are detected by regex patterns), then neutralizes
+        matched signatures by replacing them with a safe placeholder.
+
+        Args:
+            text: Raw input text to sanitize.
+
+        Returns:
+            Sanitized text safe for LLM submission.
+        """
+        # Step 1: Unescape HTML entities (catch encoded injections)
+        text = html.unescape(text)
+
+        # Step 2: Strip control characters
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+
+        # Step 3: Neutralize all signature matches (don't just detect)
+        for patterns in self._SIGNATURES.values():
+            for pattern in patterns:
+                text = re.sub(pattern, "[REDACTED]", text)
+
+        # Step 4: Normalize whitespace
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        return text.strip()
+
+    def validate_llm_output(self, output: str) -> tuple[bool, dict]:
+        """Validate and parse LLM JSON output, handling markdown code blocks.
+
+        Attempts direct JSON parse first, then strips markdown fences
+        if the first attempt fails. This handles GPT-4o's tendency to
+        wrap JSON in ```json ... ``` blocks.
+
+        Args:
+            output: Raw string response from the LLM API.
+
+        Returns:
+            Tuple of (is_valid: bool, parsed_data: dict).
+            parsed_data is empty dict if validation fails.
+        """
+        if not output or not output.strip():
+            logger.error("LLM output validation failed: empty response")
+            return False, {}
+
+        candidates = [
+            output.strip(),
+            # Strip markdown fences
+            re.sub(r"^```(?:json)?\s*|\s*```$", "", output.strip(), flags=re.MULTILINE),
+        ]
+
+        for candidate in candidates:
+            try:
+                data = json.loads(candidate)
+                logger.debug("LLM output parsed successfully ({} keys)", len(data))
+                return True, data
+            except json.JSONDecodeError:
+                continue
+
+        logger.error(
+            "LLM output validation failed: not valid JSON even after markdown strip. "
+            "First 200 chars: {}",
+            output[:200],
+        )
+        return False, {}

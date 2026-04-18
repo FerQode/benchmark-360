@@ -81,18 +81,6 @@ class ScrapedPage:
             One of: 'httpx', 'playwright', 'playwright_screenshot'.
         page_title: Content of HTML <title> tag.
         error: Non-fatal error description, or None if clean.
-
-    Example:
-        >>> page = ScrapedPage(
-        ...     isp_key="netlife",
-        ...     url="https://netlife.ec/planes-hogar",
-        ...     html_content="<html>Plan Duo 300Mbps...</html>",
-        ...     text_content="Plan Duo 300Mbps $35.90 mensual",
-        ...     screenshots=[b"\\x89PNG..."],
-        ...     scraping_method="playwright",
-        ... )
-        >>> page.content_size_kb
-        0.04
     """
 
     isp_key: str
@@ -122,50 +110,34 @@ class ScrapedPage:
         return self.error is not None
 
     def screenshots_as_base64(self) -> list[str]:
-        """Encode all screenshots to base64 for OpenAI Vision API.
-
-        Returns:
-            List of base64-encoded PNG strings, ready for
-            inclusion in a GPT-4o vision message payload.
-        """
+        """Encode all screenshots to base64 for OpenAI Vision API."""
         return [
             base64.b64encode(shot).decode("utf-8")
             for shot in self.screenshots
         ]
 
     def save_raw(self, output_dir: Path) -> None:
-        """Persist raw content to disk for debugging and audit trail.
+        """Persist raw content to disk for debugging and audit trail."""
+        if not self.html_content and not self.screenshots:
+            logger.warning("[{}] No content to save — skipping save_raw()", self.isp_key)
+            return
 
-        Creates timestamped files so multiple runs don't overwrite
-        each other. This supports the trazabilidad histórica
-        objective from the hackathon requirements.
-
-        Args:
-            output_dir: Target directory for raw content files.
-        """
         output_dir.mkdir(parents=True, exist_ok=True)
         ts = self.scraped_at.strftime("%Y%m%d_%H%M%S")
 
-        # Save HTML
-        html_path = output_dir / f"{self.isp_key}_{ts}.html"
-        html_path.write_text(self.html_content, encoding="utf-8")
-
-        # Save text
-        txt_path = output_dir / f"{self.isp_key}_{ts}.txt"
-        txt_path.write_text(self.text_content, encoding="utf-8")
-
-        # Save screenshots
-        for i, shot in enumerate(self.screenshots):
-            shot_path = (
-                output_dir / f"{self.isp_key}_{ts}_screenshot_{i:02d}.png"
+        if self.html_content:
+            (output_dir / f"{self.isp_key}_{ts}.html").write_text(
+                self.html_content, encoding="utf-8"
             )
-            shot_path.write_bytes(shot)
+        if self.text_content:
+            (output_dir / f"{self.isp_key}_{ts}.txt").write_text(
+                self.text_content, encoding="utf-8"
+            )
+        for i, shot in enumerate(self.screenshots):
+            (output_dir / f"{self.isp_key}_{ts}_screenshot_{i:02d}.png").write_bytes(shot)
 
-        logger.info(
-            f"[{self.isp_key}] 💾 Raw saved → {output_dir} "
-            f"({self.content_size_kb:.1f} KB HTML, "
-            f"{len(self.screenshots)} screenshots)"
-        )
+        logger.info("[{}] 💾 Raw saved → {} ({:.1f} KB, {} shots)",
+                    self.isp_key, output_dir, self.content_size_kb, len(self.screenshots))
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -176,55 +148,20 @@ class ScrapedPage:
 class BaseISPScraper(ABC):
     """Abstract base implementing Template Method + Strategy patterns.
 
-    Provides the algorithm skeleton for all ISP scrapers:
-        1. Verify robots.txt compliance (always)
-        2. Choose scraping strategy (httpx / playwright / screenshot)
-        3. Apply polite delay (always)
-        4. Execute fetch with retry logic
-        5. Extract and clean text content
-        6. Capture screenshots if needed
-        7. Return ScrapedPage DTO
-
+    Provides the algorithm skeleton for all ISP scrapers.
     Concrete subclasses override ONLY the parts that differ:
-        - get_plan_urls(): Which URLs to target
-        - requires_playwright(): Which strategy to use
-        - scrape(): Full workflow (calls base helpers)
-
-    Class Attributes:
-        _browser: Shared Playwright browser (Singleton pattern).
-            One browser process shared across all ISP scrapers
-            to save memory and startup time.
-        _BASE_HEADERS: HTTP headers mimicking a real browser.
-            Identifies as Benchmark360Bot for transparency.
-
-    Args:
-        isp_key: Pipeline-internal ISP identifier.
-        base_url: Root URL of the ISP website.
-        robots_checker: Pre-initialized and pre-loaded compliance checker.
-        delay_range: (min_sec, max_sec) random delay between requests.
-        data_raw_path: Directory for raw content persistence.
-        max_retries: Retry attempts on transient failures.
-
-    Example:
-        >>> checker = RobotsChecker()
-        >>> await checker.analyze("https://ecuanet.ec")
-        >>> scraper = EcuanetScraper(
-        ...     robots_checker=checker,
-        ...     delay_range=(2.0, 4.0),
-        ... )
-        >>> page = await scraper.scrape()
+        - get_plan_urls()
+        - requires_playwright()
+        - scrape()
     """
 
-    # ── Class-level Singleton for Playwright browser ──────────────
     _browser: ClassVar = None
     _playwright: ClassVar = None
+    _browser_lock: ClassVar[asyncio.Lock | None] = None
 
     _BASE_HEADERS: ClassVar[dict[str, str]] = {
         "User-Agent": PIPELINE_USER_AGENT,
-        "Accept": (
-            "text/html,application/xhtml+xml,"
-            "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "es-EC,es;q=0.9,en-US;q=0.8,en;q=0.7",
         "Accept-Encoding": "gzip, deflate, br",
         "Cache-Control": "no-cache",
@@ -252,146 +189,71 @@ class BaseISPScraper(ABC):
         self.max_retries = max_retries
         self._request_count: int = 0
 
-    # ── Abstract Interface (must implement) ───────────────────────
-
     @abstractmethod
     async def scrape(self) -> ScrapedPage:
-        """Execute the complete scraping workflow for this ISP.
-
-        Returns:
-            ScrapedPage DTO with all extracted content.
-        """
         ...
 
     @abstractmethod
     def get_plan_urls(self) -> list[str]:
-        """Return all URLs containing plan pricing information.
-
-        Returns:
-            Ordered list of URLs to scrape for this ISP.
-        """
         ...
 
     @abstractmethod
     def requires_playwright(self) -> bool:
-        """Declare whether this ISP requires JavaScript rendering.
-
-        Returns:
-            True if Playwright needed, False if httpx suffices.
-        """
         ...
 
-    # ── Shared Infrastructure Methods ─────────────────────────────
+    @classmethod
+    def _get_browser_lock(cls) -> asyncio.Lock:
+        """Get or create the browser initialization lock lazily."""
+        if cls._browser_lock is None:
+            cls._browser_lock = asyncio.Lock()
+        return cls._browser_lock
 
     async def _polite_delay(self) -> None:
-        """Apply random jitter delay respecting crawl-delay directives.
-
-        Computes delay as: max(crawl_delay_from_robots, min_delay) + jitter
-        This ensures we never violate any site's crawl-delay while
-        also adding unpredictable timing to avoid rate limiting.
-        """
-        # Honor robots.txt crawl-delay if available
-        base = f"{self.base_url.rstrip('/')}"
-        if base in self.robots_checker._cache:
-            min_delay = self.robots_checker._cache[base].effective_delay
-        else:
-            min_delay = self.delay_range[0]
-
+        """Apply random jitter delay respecting crawl-delay directives."""
+        min_delay = self.robots_checker.get_crawl_delay(self.base_url)
         max_delay = max(min_delay + 1.0, self.delay_range[1])
         delay = random.uniform(min_delay, max_delay)
         self._request_count += 1
-
-        logger.debug(
-            f"[{self.isp_key}] ⏱️  Request #{self._request_count} → "
-            f"sleeping {delay:.2f}s"
-        )
+        
+        logger.debug("[{}] ⏱️  Request #{} → sleeping {:.2f}s",
+                     self.isp_key, self._request_count, delay)
         await asyncio.sleep(delay)
 
     def _is_url_allowed(self, url: str) -> bool:
-        """Check URL against robots.txt before any HTTP request.
-
-        Args:
-            url: Full URL to validate.
-
-        Returns:
-            True if scraping is permitted.
-        """
+        """Check URL against robots.txt before any HTTP request."""
         try:
             return self.robots_checker.can_fetch(url)
         except RuntimeError:
-            logger.warning(
-                f"[{self.isp_key}] ⚠️  robots.txt not pre-loaded for "
-                f"{url}. Using conservative allow."
-            )
+            logger.warning("[{}] ⚠️  robots.txt not pre-loaded for {}. Using conservative allow.",
+                           self.isp_key, url)
             return True
 
     @staticmethod
-    def _extract_text_from_html(html: str) -> str:
-        """Extract clean plain text from HTML using BeautifulSoup.
-
-        Removes all tags, scripts, styles and normalizes whitespace.
-        This text is what gets sent to the LLM text processor.
-
-        Args:
-            html: Raw HTML string to parse.
-
-        Returns:
-            Clean, normalized plain text string.
-        """
-        soup = BeautifulSoup(html, "lxml")
-
-        # Remove non-content elements
-        for tag in soup(["script", "style", "noscript", "iframe",
-                          "header", "footer", "nav", "aside"]):
+    def _extract_text_from_html(html_content: str) -> str:
+        """Extract clean plain text from HTML using BeautifulSoup."""
+        soup = BeautifulSoup(html_content, "lxml")
+        for tag in soup(["script", "style", "noscript", "iframe", "header", "footer", "nav", "aside"]):
             tag.decompose()
-
         text = soup.get_text(separator=" ", strip=True)
-
-        # Normalize whitespace
         text = re.sub(r"\s+", " ", text)
         text = re.sub(r"\n{2,}", "\n", text)
-
         return text.strip()
 
     @staticmethod
-    def _extract_page_title(html: str) -> str:
-        """Extract the page title from HTML.
-
-        Args:
-            html: Raw HTML string.
-
-        Returns:
-            Title text or empty string if not found.
-        """
-        soup = BeautifulSoup(html, "lxml")
+    def _extract_page_title(html_content: str) -> str:
+        """Extract the page title from HTML."""
+        soup = BeautifulSoup(html_content, "lxml")
         title_tag = soup.find("title")
         return title_tag.get_text(strip=True) if title_tag else ""
 
     @retry(
-        retry=retry_if_exception_type(
-            (httpx.RequestError, httpx.HTTPStatusError)
-        ),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=15),
         reraise=True,
     )
     async def _fetch_html_httpx(self, url: str) -> tuple[str, str]:
-        """Fetch page HTML using httpx (Strategy Level 1).
-
-        Fastest strategy — direct HTTP request without browser.
-        Use for sites with static HTML (no JavaScript required).
-
-        Args:
-            url: Target URL to fetch.
-
-        Returns:
-            Tuple of (html_content, page_title).
-            Returns ('', '') if URL is disallowed.
-
-        Raises:
-            httpx.HTTPStatusError: On 4xx/5xx after retries.
-            httpx.RequestError: On network failure after retries.
-        """
+        """Fetch page HTML using httpx (Strategy Level 1)."""
         if not self._is_url_allowed(url):
             return "", ""
 
@@ -405,14 +267,11 @@ class BaseISPScraper(ABC):
             response = await client.get(url)
             response.raise_for_status()
 
-            html = response.text[:MAX_HTML_CHARS]  # Size limit
+            html = response.text[:MAX_HTML_CHARS]
             title = self._extract_page_title(html)
 
-            logger.info(
-                f"[{self.isp_key}] ✅ httpx → {url} "
-                f"(HTTP {response.status_code}, "
-                f"{len(html) / 1024:.1f} KB)"
-            )
+            logger.info("[{}] ✅ httpx → {} (HTTP {}, {:.1f} KB)",
+                        self.isp_key, url, response.status_code, len(html) / 1024)
             return html, title
 
     async def _fetch_html_playwright(
@@ -421,185 +280,121 @@ class BaseISPScraper(ABC):
         take_screenshot: bool = True,
         wait_selector: str | None = None,
     ) -> tuple[str, str, list[bytes]]:
-        """Fetch page using Playwright for JS-rendered content (Strategy Level 2).
-
-        Launches or reuses a shared Chromium browser instance,
-        navigates to the URL, waits for network idle, and optionally
-        captures a full-page screenshot.
-
-        Args:
-            url: Target URL to fetch.
-            take_screenshot: If True, captures full-page screenshot.
-            wait_selector: Optional CSS selector to wait for before
-                capturing content (e.g., '.plan-card' for plan cards).
-
-        Returns:
-            Tuple of (html_content, page_title, screenshots_list).
-            Returns ('', '', []) if URL is disallowed.
-
-        Raises:
-            RuntimeError: If Playwright browser fails to launch.
-        """
+        """Fetch page using Playwright for JS-rendered content (Strategy Level 2)."""
         if not self._is_url_allowed(url):
             return "", "", []
 
         await self._polite_delay()
-
-        # Lazy-initialize shared browser (Singleton)
         await self._ensure_browser()
 
         screenshots: list[bytes] = []
+        context = None
 
         try:
             context = await BaseISPScraper._browser.new_context(
-                viewport={
-                    "width": MAX_SCREENSHOT_WIDTH,
-                    "height": 900,
-                },
+                viewport={"width": MAX_SCREENSHOT_WIDTH, "height": 900},
                 locale="es-EC",
                 timezone_id="America/Guayaquil",
                 extra_http_headers=self._BASE_HEADERS,
             )
             page = await context.new_page()
 
-            # Navigate with timeout
-            await page.goto(
-                url,
-                timeout=PLAYWRIGHT_NAVIGATION_TIMEOUT,
-                wait_until="networkidle",
-            )
-
-            # Wait additional time for lazy-loaded content
+            await page.goto(url, timeout=PLAYWRIGHT_NAVIGATION_TIMEOUT, wait_until="networkidle")
             await asyncio.sleep(PLAYWRIGHT_WAIT_FOR_NETWORK_IDLE / 1000)
 
-            # Wait for specific element if requested
             if wait_selector:
                 try:
-                    await page.wait_for_selector(
-                        wait_selector,
-                        timeout=10_000,
-                    )
-                    logger.debug(
-                        f"[{self.isp_key}] Selector '{wait_selector}' found"
-                    )
+                    await page.wait_for_selector(wait_selector, timeout=10_000)
+                    logger.debug("[{}] Selector '{}' found", self.isp_key, wait_selector)
                 except Exception:
-                    logger.warning(
-                        f"[{self.isp_key}] Selector '{wait_selector}' "
-                        f"not found — continuing anyway"
-                    )
+                    logger.warning("[{}] Selector '{}' not found — continuing anyway",
+                                   self.isp_key, wait_selector)
 
-            # Get full rendered HTML
-            html = await page.content()
-            html = html[:MAX_HTML_CHARS]
+            html = (await page.content())[:MAX_HTML_CHARS]
             title = await page.title()
 
-            logger.info(
-                f"[{self.isp_key}] ✅ playwright → {url} "
-                f"({len(html) / 1024:.1f} KB, title='{title[:50]}')"
-            )
+            logger.info("[{}] ✅ playwright → {} ({:.1f} KB, title='{}')",
+                        self.isp_key, url, len(html) / 1024, title[:50])
 
-            # Capture screenshot(s)
             if take_screenshot:
-                screenshot_bytes = await page.screenshot(
-                    full_page=True,
-                    type="png",
-                )
+                screenshot_bytes = await page.screenshot(full_page=True, type="png")
                 screenshots.append(screenshot_bytes)
-                logger.debug(
-                    f"[{self.isp_key}] 📸 Screenshot: "
-                    f"{len(screenshot_bytes) / 1024:.1f} KB"
-                )
+                logger.debug("[{}] 📸 Screenshot: {:.1f} KB",
+                             self.isp_key, len(screenshot_bytes) / 1024)
 
-            await context.close()
             return html, title, screenshots
 
         except Exception as exc:
-            logger.error(
-                f"[{self.isp_key}] ❌ Playwright failed for {url}: {exc}"
-            )
+            logger.error("[{}] ❌ Playwright failed for {}: {}", self.isp_key, url, exc)
             return "", "", []
+
+        finally:
+            if context:
+                await context.close()
 
     async def _scrape_with_fallback(
         self,
         url: str,
         wait_selector: str | None = None,
     ) -> tuple[str, str, list[bytes], str]:
-        """Execute 3-level scraping strategy with automatic fallback.
-
-        Tries strategies in order: httpx → playwright → screenshot-only.
-        Falls back gracefully if a strategy fails.
-
-        Strategy selection:
-            - If requires_playwright() is False → start with httpx
-            - If requires_playwright() is True → start with playwright
-            - If both fail → screenshot-only as last resort
-
-        Args:
-            url: Target URL to scrape.
-            wait_selector: CSS selector to wait for in Playwright.
-
-        Returns:
-            Tuple of (html, title, screenshots, method_used).
-        """
+        """Execute 3-level scraping strategy with automatic fallback."""
+        
+        # ── Strategy 1: httpx (only for non-JS sites) ─────────────
         if not self.requires_playwright():
-            # Strategy 1: httpx (fast path for static sites)
             try:
                 html, title = await self._fetch_html_httpx(url)
-                if html:
+                if html and len(html) > 500:  # Sanity: not empty/redirect page
                     return html, title, [], "httpx"
+                logger.warning("[{}] httpx returned insufficient content ({} chars)",
+                               self.isp_key, len(html))
             except Exception as exc:
-                logger.warning(
-                    f"[{self.isp_key}] httpx failed: {exc}. "
-                    "Falling back to Playwright..."
-                )
+                logger.warning("[{}] httpx failed: {} → falling back to Playwright",
+                               self.isp_key, exc)
 
-        # Strategy 2: Playwright (JS-rendered)
+        # ── Strategy 2: Playwright (full HTML + screenshot) ────────
         try:
             html, title, shots = await self._fetch_html_playwright(
-                url,
-                take_screenshot=True,
-                wait_selector=wait_selector,
+                url, take_screenshot=True, wait_selector=wait_selector,
             )
             if html:
-                method = "playwright"
-                return html, title, shots, method
-        except Exception as exc:
-            logger.warning(
-                f"[{self.isp_key}] Playwright failed: {exc}. "
-                "Using screenshot-only fallback..."
-            )
-
-        # Strategy 3: Screenshot only (Vision LLM will handle it)
-        try:
-            _, _, shots = await self._fetch_html_playwright(
-                url,
-                take_screenshot=True,
-            )
-            if shots:
-                logger.info(
-                    f"[{self.isp_key}] 📸 Screenshot-only fallback "
-                    f"for {url} — Vision LLM will process"
-                )
+                return html, title, shots, "playwright"
+            elif shots:
+                logger.info("[{}] Playwright got screenshot but no HTML for {}",
+                            self.isp_key, url)
                 return "", "", shots, "playwright_screenshot"
         except Exception as exc:
-            logger.error(
-                f"[{self.isp_key}] All strategies failed for {url}: {exc}"
+            logger.warning("[{}] Playwright failed: {} → screenshot-only attempt",
+                           self.isp_key, exc)
+
+        # ── Strategy 3: Screenshot only (different approach) ──────
+        try:
+            await self._ensure_browser()
+            context = await BaseISPScraper._browser.new_context(
+                viewport={"width": 1280, "height": 900},
             )
+            page = await context.new_page()
+            await page.goto(url, timeout=20_000, wait_until="load")
+            screenshot = await page.screenshot(full_page=True, type="png")
+            await context.close()
+
+            if screenshot:
+                logger.info("[{}] 📸 Screenshot-only fallback for {}", self.isp_key, url)
+                return "", "", [screenshot], "playwright_screenshot"
+        except Exception as exc:
+            logger.error("[{}] All 3 strategies failed for {}: {}", self.isp_key, url, exc)
 
         return "", "", [], "failed"
 
     @classmethod
     async def _ensure_browser(cls) -> None:
-        """Lazily initialize the shared Playwright browser instance.
+        """Lazily initialize the shared Playwright browser (thread-safe)."""
+        if cls._browser is not None:
+            return
 
-        Uses Singleton pattern — only one browser process runs
-        for the entire pipeline execution, shared across all
-        8 ISP scrapers for memory efficiency.
+        async with cls._get_browser_lock():
+            if cls._browser is not None:
+                return
 
-        Raises:
-            RuntimeError: If Playwright is not installed.
-        """
-        if cls._browser is None:
             try:
                 from playwright.async_api import async_playwright
 
@@ -616,9 +411,7 @@ class BaseISPScraper(ABC):
                         "--disable-default-apps",
                     ],
                 )
-                logger.info(
-                    "[browser] ✅ Chromium launched (shared singleton)"
-                )
+                logger.info("[browser] ✅ Chromium launched (shared singleton)")
             except ImportError as exc:
                 raise RuntimeError(
                     "Playwright not installed. Run: uv run playwright install chromium"
@@ -626,11 +419,7 @@ class BaseISPScraper(ABC):
 
     @classmethod
     async def close_browser(cls) -> None:
-        """Close the shared browser and cleanup Playwright resources.
-
-        Must be called at the end of pipeline execution to
-        prevent resource leaks. Called by the orchestrator.
-        """
+        """Close the shared browser and cleanup Playwright resources."""
         if cls._browser:
             await cls._browser.close()
             cls._browser = None

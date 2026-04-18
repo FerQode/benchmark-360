@@ -1,25 +1,15 @@
-# src/scrapers/netlife_scraper.py
 """
 Netlife ISP scraper — Playwright + Vision LLM strategy.
 
-Netlife (operated by MEGADATOS S.A.) uses a JavaScript-heavy
-React frontend with plans displayed in dynamic card components.
-Some promotional content appears as CSS background images or
-<img> banners that require Vision LLM processing.
+Netlife uses a React SPA frontend. Plan pricing cards render dynamically
+and promotional banners are image-based, requiring Vision LLM.
 
 Scraping Strategy:
-    Primary:  Playwright (networkidle wait + .plan-card selector)
+    Primary:  Playwright (networkidle + .plan-card selector)
     Fallback: Full-page screenshot → Vision LLM
 
 Target URLs:
-    Main:   https://netlife.ec/
-    Planes: https://netlife.ec/planes-hogar (if exists)
-
-Typical usage example:
-    >>> scraper = NetlifeScraper(robots_checker=checker)
-    >>> page = await scraper.scrape()
-    >>> print(f"Method: {page.scraping_method}")
-    >>> print(f"Content: {page.content_size_kb:.1f} KB")
+    Main:      https://www.netlife.ec/planes-hogar/
 """
 
 from __future__ import annotations
@@ -33,11 +23,11 @@ from src.utils.robots_checker import RobotsChecker
 
 
 class NetlifeScraper(BaseISPScraper):
-    """Scraper for Netlife (MEGADATOS S.A.) internet plans.
+    """Scraper for Netlife internet plans.
 
-    Handles the React-based Netlife website which renders plan
-    cards dynamically. Captures both HTML content and screenshots
-    for hybrid text+vision LLM processing.
+    Handles Netlife Ecuador's React-based website. Plan cards
+    are dynamically rendered — Playwright required. Captures
+    both HTML and screenshots for hybrid processing.
 
     Args:
         robots_checker: Pre-initialized compliance checker.
@@ -45,8 +35,7 @@ class NetlifeScraper(BaseISPScraper):
         data_raw_path: Directory for raw content storage.
     """
 
-    # CSS selectors to wait for before capturing content
-    _PLAN_SELECTOR: str = ".plan-card, [class*='plan'], [class*='Plan']"
+    _PLAN_SELECTOR: str = ".elementor-widget-container, .pricing-table, [class*='plan']"
 
     def __init__(
         self,
@@ -56,41 +45,43 @@ class NetlifeScraper(BaseISPScraper):
     ) -> None:
         super().__init__(
             isp_key="netlife",
-            base_url="https://netlife.ec",
+            base_url="https://www.netlife.ec",
             robots_checker=robots_checker,
             delay_range=delay_range,
             data_raw_path=data_raw_path,
         )
 
     def get_plan_urls(self) -> list[str]:
-        """Return Netlife URLs containing plan information.
+        """Return Netlife Ecuador URLs containing plan information.
 
         Returns:
-            List of URLs to scrape for plan data.
+            Ordered list: specific plan page first, homepage second
+            as fallback in case the plan URL structure changes.
         """
         return [
-            "https://netlife.ec/",
-            "https://netlife.ec/planes-hogar",
+            "https://www.netlife.ec/planes-hogar/",
+            "https://www.netlife.ec/",
         ]
 
     def requires_playwright(self) -> bool:
         """Netlife requires Playwright — React SPA.
 
         Returns:
-            True always for Netlife.
+            True always — Netlife's frontend is fully JS-rendered.
         """
         return True
 
     async def scrape(self) -> ScrapedPage:
         """Execute Netlife scraping with Playwright + screenshot strategy.
 
-        Tries each plan URL, captures HTML and screenshots,
-        combines all content into a single ScrapedPage DTO.
+        Iterates all plan URLs, aggregates HTML and screenshots into
+        a single ScrapedPage DTO for downstream LLM processing.
 
         Returns:
             ScrapedPage with combined content from all plan URLs.
+            Falls back to screenshot-only if HTML extraction fails.
         """
-        logger.info(f"[{self.isp_key}] 🕷️  Starting scrape...")
+        logger.info("[{}] 🕷️  Starting scrape...", self.isp_key)
 
         combined_html: list[str] = []
         combined_text: list[str] = []
@@ -105,27 +96,18 @@ class NetlifeScraper(BaseISPScraper):
                     url=url,
                     wait_selector=self._PLAN_SELECTOR,
                 )
-
                 if html:
                     combined_html.append(f"<!-- URL: {url} -->\n{html}")
                     text = self._extract_text_from_html(html)
                     combined_text.append(f"[Fuente: {url}]\n{text}")
                     method_used = method
-
                 if title and not primary_title:
                     primary_title = title
-
                 all_screenshots.extend(shots)
-                logger.info(
-                    f"[{self.isp_key}] ✅ {url} → "
-                    f"{len(html) / 1024:.1f} KB, "
-                    f"{len(shots)} screenshots"
-                )
 
             except Exception as exc:
-                error_msg = f"Failed {url}: {exc}"
-                logger.warning(f"[{self.isp_key}] ⚠️  {error_msg}")
-                error = error_msg
+                error = f"Failed {url}: {exc}"
+                logger.warning("[{}] ⚠️  {}", self.isp_key, error)
 
         page = ScrapedPage(
             isp_key=self.isp_key,
@@ -138,14 +120,8 @@ class NetlifeScraper(BaseISPScraper):
             page_title=primary_title,
             error=error,
         )
-
-        # Persist raw for audit trail
         page.save_raw(self.data_raw_path)
-
-        logger.info(
-            f"[{self.isp_key}] 🏁 Done — "
-            f"{page.content_size_kb:.1f} KB, "
-            f"{len(page.screenshots)} screenshots, "
-            f"method={page.scraping_method}"
-        )
+        logger.info("[{}] 🏁 Done — {:.1f} KB, {} shots, method={}",
+                    self.isp_key, page.content_size_kb,
+                    len(page.screenshots), page.scraping_method)
         return page

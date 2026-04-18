@@ -1,27 +1,15 @@
-# src/scrapers/cnt_scraper.py
 """
-CNT ISP scraper — httpx + BeautifulSoup strategy.
+CNT ISP scraper — httpx + Playwright fallback strategy.
 
-CNT (Corporación Nacional de Telecomunicaciones) uses a
-server-side rendered website with static HTML plan tables,
-making it the simplest scraper in the pipeline.
-
-No JavaScript rendering required — direct httpx requests
-are sufficient to capture all plan data.
+CNT uses a mostly SSR frontend. Plan pricing cards usually render
+in static HTML, making it perfect for rapid httpx scraping.
 
 Scraping Strategy:
-    Primary:  httpx (static HTML)
-    Fallback: Playwright if httpx returns insufficient content
+    Primary:  httpx (fast static HTML)
+    Fallback: Playwright if dynamically loaded
 
 Target URLs:
-    Main:    https://www.cnt.com.ec/
-    Internet: https://www.cnt.com.ec/servicios/internet/
-
-Typical usage example:
-    >>> scraper = CNTScraper(robots_checker=checker)
-    >>> page = await scraper.scrape()
-    >>> page.scraping_method
-    'httpx'
+    Main:      https://www.cnt.com.ec/hogar/internet
 """
 
 from __future__ import annotations
@@ -33,15 +21,13 @@ from loguru import logger
 from src.scrapers.base_scraper import BaseISPScraper, ScrapedPage
 from src.utils.robots_checker import RobotsChecker
 
-# Minimum content threshold — if httpx returns less, we fallback
-_MIN_CONTENT_CHARS: int = 5_000
-
 
 class CNTScraper(BaseISPScraper):
-    """Scraper for CNT internet plans using httpx + BeautifulSoup.
+    """Scraper for CNT internet plans.
 
-    CNT's website is server-side rendered, making it the fastest
-    and simplest ISP to scrape in the Benchmark 360 pipeline.
+    Handles CNT Ecuador's SSR-based website. Plan cards
+    are usually static — httpx preferred. Captures
+    HTML for processing.
 
     Args:
         robots_checker: Pre-initialized compliance checker.
@@ -49,10 +35,12 @@ class CNTScraper(BaseISPScraper):
         data_raw_path: Directory for raw content storage.
     """
 
+    _PLAN_SELECTOR: str = ".plan-card, .tarjeta-plan, [class*='plan']"
+
     def __init__(
         self,
         robots_checker: RobotsChecker,
-        delay_range: tuple[float, float] = (2.0, 4.0),
+        delay_range: tuple[float, float] = (2.5, 5.0),
         data_raw_path: Path = Path("data/raw"),
     ) -> None:
         super().__init__(
@@ -64,36 +52,40 @@ class CNTScraper(BaseISPScraper):
         )
 
     def get_plan_urls(self) -> list[str]:
-        """Return CNT URLs containing internet plan information.
+        """Return CNT Ecuador URLs containing plan information.
 
         Returns:
-            List of CNT plan page URLs.
+            Ordered list: specific plan page first, homepage second
+            as fallback in case the plan URL structure changes.
         """
         return [
-            "https://www.cnt.com.ec/servicios/internet/",
-            "https://www.cnt.com.ec/",
+            "https://www.cnt.com.ec/hogar/internet",
+            "https://www.cnt.com.ec/hogar/",
         ]
 
     def requires_playwright(self) -> bool:
-        """CNT does NOT require Playwright — static HTML.
+        """CNT can usually be scraped with httpx first.
 
         Returns:
-            False — httpx is sufficient for CNT.
+            False — allows httpx strategy to run before playwright.
         """
         return False
 
     async def scrape(self) -> ScrapedPage:
-        """Execute CNT scraping using httpx with Playwright fallback.
+        """Execute CNT scraping with httpx + Playwright fallback strategy.
+
+        Iterates all plan URLs, aggregates HTML into
+        a single ScrapedPage DTO for downstream LLM processing.
 
         Returns:
-            ScrapedPage with plan content extracted via httpx.
+            ScrapedPage with combined content from all plan URLs.
         """
-        logger.info(f"[{self.isp_key}] 🕷️  Starting scrape (httpx mode)...")
+        logger.info("[{}] 🕷️  Starting scrape...", self.isp_key)
 
         combined_html: list[str] = []
         combined_text: list[str] = []
         all_screenshots: list[bytes] = []
-        method_used = "httpx"
+        method_used = "unknown"
         primary_title = ""
         error: str | None = None
 
@@ -101,30 +93,22 @@ class CNTScraper(BaseISPScraper):
             try:
                 html, title, shots, method = await self._scrape_with_fallback(
                     url=url,
+                    wait_selector=self._PLAN_SELECTOR,
                 )
-
-                # Content quality check — if too little, note it
-                if len(html) < _MIN_CONTENT_CHARS and html:
-                    logger.warning(
-                        f"[{self.isp_key}] ⚠️  Low content from {url}: "
-                        f"{len(html)} chars — may need Playwright"
-                    )
-
                 if html:
                     combined_html.append(f"<!-- URL: {url} -->\n{html}")
                     text = self._extract_text_from_html(html)
                     combined_text.append(f"[Fuente: {url}]\n{text}")
-                    method_used = method
-
+                    if method_used == "unknown" or method == "playwright":
+                        # Upgrade method recorded if playwright was needed
+                        method_used = method
                 if title and not primary_title:
                     primary_title = title
-
                 all_screenshots.extend(shots)
 
             except Exception as exc:
-                error_msg = f"Failed {url}: {exc}"
-                logger.error(f"[{self.isp_key}] ❌ {error_msg}")
-                error = error_msg
+                error = f"Failed {url}: {exc}"
+                logger.warning("[{}] ⚠️  {}", self.isp_key, error)
 
         page = ScrapedPage(
             isp_key=self.isp_key,
@@ -137,10 +121,8 @@ class CNTScraper(BaseISPScraper):
             page_title=primary_title,
             error=error,
         )
-
         page.save_raw(self.data_raw_path)
-        logger.info(
-            f"[{self.isp_key}] 🏁 Done — "
-            f"{page.content_size_kb:.1f} KB, method={page.scraping_method}"
-        )
+        logger.info("[{}] 🏁 Done — {:.1f} KB, {} shots, method={}",
+                    self.isp_key, page.content_size_kb,
+                    len(page.screenshots), page.scraping_method)
         return page
