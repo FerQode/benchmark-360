@@ -1,3 +1,4 @@
+# src/scrapers/cnt_scraper.py
 """
 CNT ISP scraper — httpx + Playwright fallback strategy.
 

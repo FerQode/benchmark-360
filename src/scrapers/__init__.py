@@ -1,3 +1,4 @@
+# src/scrapers/__init__.py
 """
 Scraping factory and central registry for Benchmark 360.
 

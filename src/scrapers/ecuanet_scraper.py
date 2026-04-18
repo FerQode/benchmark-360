@@ -1,3 +1,4 @@
+#src/scrapers/ecuanet_scraper.py
 """
 Ecuanet ISP scraper — Playwright + Vision LLM strategy.
 

@@ -1,3 +1,4 @@
+#src/scrapers/alfanet_scraper.py
 """
 Alfanet ISP scraper — Playwright + Vision LLM strategy.
 

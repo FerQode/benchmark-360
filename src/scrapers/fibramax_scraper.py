@@ -1,3 +1,4 @@
+#src/scrapers/fibramax_scraper.py
 """
 Fibramax ISP scraper — Playwright + Vision LLM strategy.
 

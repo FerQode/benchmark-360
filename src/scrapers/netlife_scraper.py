@@ -1,3 +1,4 @@
+# src/scrapers/netlife_scraper.py
 """
 Netlife ISP scraper — Playwright + Vision LLM strategy.
 

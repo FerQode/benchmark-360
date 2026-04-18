@@ -1,3 +1,4 @@
+# src/scrapers/claro_scraper.py
 """
 Claro ISP scraper — Playwright + Vision LLM strategy.
 

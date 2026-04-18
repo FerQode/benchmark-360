@@ -1,3 +1,4 @@
+#src/scrapers/xtrim_scraper.py
 """
 Xtrim ISP scraper — Playwright + Vision LLM strategy.
 

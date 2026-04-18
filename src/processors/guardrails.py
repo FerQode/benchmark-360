@@ -1,3 +1,4 @@
+# src/processors/guardrails.py
 """
 Guardrails engine to protect against injection attacks.
 
@@ -48,10 +49,10 @@ class GuardrailsEngine:
     # 27 injection signatures combined into categories
     _SIGNATURES = {
         "sql_injection": [
-            r"(?i)\bUNION\b\s+(?i)ALL\b", r"(?i)\bSELECT\b\s+.*\bFROM\b",
-            r"(?i)\bDROP\b\s+(?i)TABLE\b", r"(?i)\bINSERT\b\s+(?i)INTO\b",
-            r"(?i)\bDELETE\b\s+(?i)FROM\b", r"(?i)\bUPDATE\b\s+.*\bSET\b",
-            r"(?i)\bTRUNCATE\b\s+(?i)TABLE\b", r"(?i)\bALTER\b\s+(?i)TABLE\b",
+            r"(?i)\bUNION\b\s+ALL\b", r"(?i)\bSELECT\b\s+.*\bFROM\b",
+            r"(?i)\bDROP\b\s+TABLE\b", r"(?i)\bINSERT\b\s+INTO\b",
+            r"(?i)\bDELETE\b\s+FROM\b", r"(?i)\bUPDATE\b\s+.*\bSET\b",
+            r"(?i)\bTRUNCATE\b\s+TABLE\b", r"(?i)\bALTER\b\s+TABLE\b",
             r"(?i)'\s*OR\s*'1'\s*=\s*'1", r"(?i)\"\s*OR\s*\"1\"\s*=\s*\"1",
         ],
         "xss_injection": [
