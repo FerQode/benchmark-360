@@ -48,7 +48,9 @@ from src.utils.company_registry import CompanyInfo
 # Constants
 # ─────────────────────────────────────────────────────────────────
 
-MAX_TOKENS_RESPONSE: int = 4_096
+# Gemini 2.5 Flash via OpenAI compat endpoint can generate large JSON payloads.
+# 16384 matches the model's safe response limit for structured extraction tasks.
+MAX_TOKENS_RESPONSE: int = 16_384
 CHUNK_SIZE_CHARS: int = 70_000
 MIN_CONTENT_LENGTH: int = 200
 
@@ -384,12 +386,21 @@ class LLMProcessor:
                 response_format={"type": "json_object"},
             )
             content = response.choices[0].message.content or ""
+            finish = response.choices[0].finish_reason
             logger.debug(
-                "LLM: model={} len={} finish={}",
+                "LLM: model={} len={} finish={} tail={}",
                 model,
                 len(content),
-                response.choices[0].finish_reason,
+                finish,
+                repr(content[-80:]) if content else "",
             )
+            if finish == "length":
+                logger.warning(
+                    "LLM response truncated (finish_reason=length) — "
+                    "JSON may be incomplete. model={} len={}",
+                    model,
+                    len(content),
+                )
             return content
 
         return await _inner()

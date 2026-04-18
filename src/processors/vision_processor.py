@@ -43,7 +43,7 @@ from src.utils.company_registry import CompanyInfo
 # Constants
 # ─────────────────────────────────────────────────────────────────
 
-MAX_TOKENS_VISION: int = 4_096
+MAX_TOKENS_VISION: int = 16_384  # Gemini 2.5 Flash safe response limit
 MAX_SCREENSHOTS_PER_BATCH: int = 5
 
 
@@ -330,12 +330,21 @@ class VisionProcessor:
                 response_format={"type": "json_object"},
             )
             content = response.choices[0].message.content or ""
+            finish = response.choices[0].finish_reason
             logger.debug(
-                "Vision: model={} len={} finish={}",
+                "Vision: model={} len={} finish={} tail={}",
                 model,
                 len(content),
-                response.choices[0].finish_reason,
+                finish,
+                repr(content[-80:]) if content else "",
             )
+            if finish == "length":
+                logger.warning(
+                    "Vision response truncated (finish_reason=length) — "
+                    "JSON may be incomplete. model={} len={}",
+                    model,
+                    len(content),
+                )
             return content
 
         return await _inner()

@@ -163,11 +163,25 @@ class GuardrailsEngine:
             logger.error("LLM output validation failed: empty response")
             return False, {}
 
-        candidates = [
-            output.strip(),
-            # Strip markdown fences
-            re.sub(r"^```(?:json)?\s*|\s*```$", "", output.strip(), flags=re.MULTILINE),
-        ]
+        raw = output.strip()
+
+        # Build candidate strings to try, from most-specific to most-lenient:
+        #   1. Strip markdown fences (```json ... ``` or ``` ... ```)
+        #   2. Extract the outermost {...} object from the full string
+        #      (handles Gemini adding text before/after the JSON block)
+        #   3. The original raw string (OpenAI usually returns clean JSON)
+        stripped = re.sub(
+            r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.DOTALL
+        ).strip()
+
+        obj_match = re.search(r"(\{.*\})", raw, flags=re.DOTALL)
+        extracted = obj_match.group(1).strip() if obj_match else ""
+
+        candidates = list(dict.fromkeys(filter(None, [
+            raw,
+            stripped,
+            extracted,
+        ])))
 
         for candidate in candidates:
             try:

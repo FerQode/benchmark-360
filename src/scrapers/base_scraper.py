@@ -204,9 +204,9 @@ class BaseISPScraper(ABC):
     @classmethod
     def _get_browser_lock(cls) -> asyncio.Lock:
         """Get or create the browser initialization lock lazily."""
-        if cls._browser_lock is None:
-            cls._browser_lock = asyncio.Lock()
-        return cls._browser_lock
+        if BaseISPScraper._browser_lock is None:
+            BaseISPScraper._browser_lock = asyncio.Lock()
+        return BaseISPScraper._browser_lock
 
     async def _polite_delay(self) -> None:
         """Apply random jitter delay respecting crawl-delay directives."""
@@ -391,18 +391,18 @@ class BaseISPScraper(ABC):
     @classmethod
     async def _ensure_browser(cls) -> None:
         """Lazily initialize the shared Playwright browser (thread-safe)."""
-        if cls._browser is not None:
+        if BaseISPScraper._browser is not None:
             return
 
         async with cls._get_browser_lock():
-            if cls._browser is not None:
+            if BaseISPScraper._browser is not None:
                 return
 
             try:
                 from playwright.async_api import async_playwright
 
-                cls._playwright = await async_playwright().start()
-                cls._browser = await cls._playwright.chromium.launch(
+                BaseISPScraper._playwright = await async_playwright().start()
+                BaseISPScraper._browser = await BaseISPScraper._playwright.chromium.launch(
                     headless=True,
                     args=[
                         "--no-sandbox",
@@ -423,10 +423,10 @@ class BaseISPScraper(ABC):
     @classmethod
     async def close_browser(cls) -> None:
         """Close the shared browser and cleanup Playwright resources."""
-        if cls._browser:
-            await cls._browser.close()
-            cls._browser = None
-        if cls._playwright:
-            await cls._playwright.stop()
-            cls._playwright = None
+        if BaseISPScraper._browser:
+            await BaseISPScraper._browser.close()
+            BaseISPScraper._browser = None
+        if BaseISPScraper._playwright:
+            await BaseISPScraper._playwright.stop()
+            BaseISPScraper._playwright = None
             logger.info("[browser] 🔒 Chromium closed and cleaned up")
