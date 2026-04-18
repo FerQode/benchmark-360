@@ -20,6 +20,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import io
+
+if isinstance(sys.stdout, io.TextIOWrapper) and sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

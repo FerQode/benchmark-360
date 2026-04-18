@@ -31,25 +31,22 @@ dependencies = [
     "playwright>=1.44.0",       # Browser automation para JS sites
     "beautifulsoup4>=4.12.0",   # HTML parsing
     "lxml>=5.2.0",              # Parser XML/HTML rápido para BS4
-
     # ── AI / LLM ────────────────────────────────────────────────
     "openai>=1.30.0",           # GPT-4o-mini + GPT-4o Vision
     "google-generativeai>=0.5.0", # Gemini (Fallback/Alternativa)
-
     # ── Data Validation ─────────────────────────────────────────
     "pydantic>=2.7.0",          # V2: Schema validation enterprise
-
     # ── Data Processing ─────────────────────────────────────────
     "pandas>=2.2.0",            # DataFrame manipulation
     "pyarrow>=16.0.0",          # Parquet read/write
     "pillow>=10.3.0",           # Image processing para Vision
-
     # ── Infrastructure ──────────────────────────────────────────
     "python-dotenv>=1.0.0",     # Variables de entorno
     "loguru>=0.7.0",            # Logging sin configuración
     "tenacity>=8.3.0",          # Retry logic con backoff
     "rich>=13.7.0",             # CLI output profesional
     "fake-useragent>=1.5.0",    # User-Agent rotation
+    "mistralai>=1.0.0",
 ]
 
 [project.optional-dependencies]

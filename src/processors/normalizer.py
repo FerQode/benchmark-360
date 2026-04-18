@@ -91,6 +91,7 @@ class PlanNormalizer:
         vision_result: VisionExtractionResult | None,
         company_info: CompanyInfo,
         extraction_dt: datetime,
+        terminos_condiciones_raw: str = "",
     ) -> list[ISPPlan]:
         """Normalize and validate all plans from Phase 5 outputs.
 
@@ -157,6 +158,7 @@ class PlanNormalizer:
                     extraction_dt=extraction_dt,
                     iva_divisor=iva_divisor,
                     isp_key=llm_result.isp_key,
+                    terminos_condiciones_raw=terminos_condiciones_raw,
                 )
                 if plan:
                     validated.append(plan)
@@ -184,6 +186,7 @@ class PlanNormalizer:
         extraction_dt: datetime,
         iva_divisor: float,
         isp_key: str,
+        terminos_condiciones_raw: str = "",
     ) -> ISPPlan | None:
         """Normalize and validate a single raw plan dict.
 
@@ -238,6 +241,7 @@ class PlanNormalizer:
                 fecha=extraction_dt,
                 empresa=company_info.empresa,
                 marca=company_info.marca,
+                terminos_condiciones=terminos_condiciones_raw or None,
                 **{
                     k: v
                     for k, v in cleaned.items()
@@ -260,6 +264,7 @@ class PlanNormalizer:
                 company_info=company_info,
                 extraction_dt=extraction_dt,
                 isp_key=isp_key,
+                terminos_condiciones_raw=terminos_condiciones_raw,
             )
 
     def _recover_from_validation_error(
@@ -269,6 +274,7 @@ class PlanNormalizer:
         company_info: CompanyInfo,
         extraction_dt: datetime,
         isp_key: str,
+        terminos_condiciones_raw: str = "",
     ) -> ISPPlan | None:
         """Attempt to build ISPPlan by nullifying invalid fields.
 
@@ -306,6 +312,7 @@ class PlanNormalizer:
                 fecha=extraction_dt,
                 empresa=company_info.empresa,
                 marca=company_info.marca,
+                terminos_condiciones=terminos_condiciones_raw or None,
                 **{
                     k: v
                     for k, v in recovery.items()

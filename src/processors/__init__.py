@@ -13,7 +13,7 @@ Typical usage example:
 
 from src.processors.arma_tu_plan_handler import ArmaTuPlanHandler, ExpandedPlan
 from src.processors.guardrails import GuardrailResult, GuardrailsEngine
-from src.processors.llm_client_factory import LLMClient, LLMClientFactory
+from src.processors.llm_client_factory import LLMClientFactory
 from src.processors.llm_processor import LLMExtractionResult, LLMProcessor
 from src.processors.normalizer import PlanNormalizer
 from src.processors.pys_catalog import (
@@ -31,7 +31,6 @@ from src.processors.vision_processor import (
 __all__ = [
     # Factory
     "LLMClientFactory",
-    "LLMClient",
     # Processors
     "LLMProcessor",
     "VisionProcessor",

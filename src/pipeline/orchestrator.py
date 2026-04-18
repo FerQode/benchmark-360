@@ -238,6 +238,8 @@ class PipelineOrchestrator:
         # Build processors once — shared across all ISP tasks
         primary = llm_factory.get_primary_client()
         fallback = llm_factory.get_fallback_client()
+        vision_primary = llm_factory.get_vision_client()
+        mistral_client = llm_factory.get_mistral_client()
 
         self._llm_processor = LLMProcessor(
             primary_client=primary,
@@ -245,9 +247,10 @@ class PipelineOrchestrator:
             guardrails=guardrails,
         )
         self._vision_processor = VisionProcessor(
-            primary_client=primary,
+            primary_client=vision_primary,
             fallback_client=fallback,
             guardrails=guardrails,
+            mistral_client=mistral_client,
         )
         self._normalizer = PlanNormalizer(
             arma_tu_plan_handler=ArmaTuPlanHandler()
@@ -504,6 +507,18 @@ class PipelineOrchestrator:
                     len(scraped_page.screenshots),
                 )
 
+                # ── T&C: inyectar directamente en los planes normalizados ───
+                # El terminos_condiciones_raw ya está en scraped_page.
+                # El normalizer lo lee desde ahí y lo asigna al campo del schema.
+                # NO va al text_content de planes. Separación de concerns respetada.
+                if scraped_page.has_tc:
+                    logger.info(
+                        "[{}] 📄 T&C disponible: {} chars → "
+                        "se asignará a terminos_condiciones en cada plan",
+                        isp_key,
+                        len(scraped_page.terminos_condiciones_raw),
+                    )
+
                 # ── Stage 2 + 3: LLM text extraction ─────────────
                 # ALWAYS runs in production (dry_run=False)
                 # Sends sanitized content to GPT-4o-mini or Gemini Flash
@@ -583,6 +598,7 @@ class PipelineOrchestrator:
                     vision_result=vision_result,
                     company_info=info,
                     extraction_dt=extraction_dt,
+                    terminos_condiciones_raw=scraped_page.terminos_condiciones_raw if scraped_page else "",
                 )
                 result.plans = plans
 
