@@ -58,7 +58,9 @@ class MistralVisionClient:
         >>> print(f"Planes extraídos: {len(plans)}")
     """
 
-    DEFAULT_MODEL = "pixtral-12-2409"
+    # pixtral-large-latest es el nombre correcto en la API Mistral v2
+    # (pixtral-12-2409 era el nombre del modelo en la API v1)
+    DEFAULT_MODEL = "pixtral-large-latest"
 
     def __init__(
         self,
@@ -66,7 +68,11 @@ class MistralVisionClient:
         model: str = DEFAULT_MODEL,
     ) -> None:
         self._api_key = api_key or os.environ.get("MISTRAL_API_KEY", "")
-        self._model = model
+        self._model = (
+            model
+            if model != "pixtral-12-2409"
+            else os.environ.get("MISTRAL_MODEL_VISION", self.DEFAULT_MODEL)
+        )
 
         if not self._api_key:
             logger.warning(
