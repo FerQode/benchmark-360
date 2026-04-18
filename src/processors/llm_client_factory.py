@@ -18,11 +18,14 @@ Google Style Docstrings — PEP8 compliant.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types as genai_types
 from loguru import logger
 from tenacity import (
     retry,
@@ -73,6 +76,22 @@ def _is_quota_error(exc: Exception) -> bool:
     """
     exc_str = str(exc).upper()
     return any(signal.upper() in exc_str for signal in _QUOTA_ERROR_SIGNALS)
+
+
+# Rate limits conservadores por modelo (requests por minuto)
+_MODEL_RPM_LIMITS: dict[str, float] = {
+    "gemini-3.1-pro-preview": 10,   # Pro: 10 RPM en free tier
+    "gemini-2.5-flash": 15,          # Flash: 15 RPM
+    "gemini-2.5-flash-lite": 30,     # Lite: 30 RPM
+    "gpt-4o-mini": 3,                # OpenAI free: muy restrictivo
+    "pixtral-12-2409": 5,            # Mistral: conservador
+}
+
+# Tiempo mínimo entre llamadas al mismo modelo (segundos)
+_MIN_DELAY_BETWEEN_CALLS: dict[str, float] = {
+    model: 60.0 / rpm
+    for model, rpm in _MODEL_RPM_LIMITS.items()
+}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -147,15 +166,13 @@ class GeminiAdapter:
             "OPENAI_API_KEY", ""
         )
 
-        # Configurar SDK Gemini una sola vez
-        if self._gemini_key:
-            genai.configure(api_key=self._gemini_key)
-
         # Construir cadena según tarea
         self._fallback_chain: list[str] = self._build_chain(task_type)
         self._current_tier: int = 0
         self._total_calls: int = 0
         self._fallback_activations: int = 0
+        # Registro de última llamada por modelo para rate limiting
+        self._last_call_time: dict[str, float] = {}
 
         logger.info(
             "GeminiAdapter init — task={}, chain={}",
@@ -193,6 +210,9 @@ class GeminiAdapter:
 
         for tier in range(self._current_tier, len(self._fallback_chain)):
             model_id = self._fallback_chain[tier]
+
+            # Respetar rate limit antes de cada llamada
+            await self._wait_for_rate_limit(model_id)
 
             try:
                 self._total_calls += 1
@@ -272,6 +292,27 @@ class GeminiAdapter:
         """Total de llamadas LLM realizadas."""
         return self._total_calls
 
+    async def _wait_for_rate_limit(self, model_id: str) -> None:
+        """Espera el tiempo mínimo entre llamadas para respetar RPM.
+
+        Args:
+            model_id: Modelo al que se va a llamar.
+        """
+        min_delay = _MIN_DELAY_BETWEEN_CALLS.get(model_id, 4.0)
+        last_call = self._last_call_time.get(model_id, 0.0)
+        elapsed = time.monotonic() - last_call
+        wait_time = max(0.0, min_delay - elapsed)
+
+        if wait_time > 0.1:
+            logger.debug(
+                "⏳ Rate limit: esperando {:.1f}s antes de llamar a {}",
+                wait_time,
+                model_id,
+            )
+            await asyncio.sleep(wait_time)
+
+        self._last_call_time[model_id] = time.monotonic()
+
     # ── Construcción de cadena ─────────────────────────────────────
 
     @staticmethod
@@ -319,11 +360,10 @@ class GeminiAdapter:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        """Llama a la API de Gemini con retry para errores transitorios.
+        """Llama a la API de Gemini (nuevo SDK google.genai) con retry.
 
-        El retry se aplica SOLO a errores no relacionados con cuota
-        (ej: errores de red, timeouts). Los errores de cuota escalan
-        al siguiente tier sin reintentar.
+        Usa el nuevo SDK google-genai que reemplaza google-generativeai.
+        El retry se aplica SOLO a errores no relacionados con cuota.
 
         Args:
             model_id: Identificador del modelo Gemini.
@@ -335,28 +375,31 @@ class GeminiAdapter:
         Returns:
             Texto de respuesta del modelo.
         """
-        import PIL.Image
-        import io
         import base64
 
-        model = genai.GenerativeModel(
-            model_name=model_id,
-            generation_config=genai.GenerationConfig(
+        client = genai.Client(api_key=self._gemini_key)
+
+        contents: list = [prompt]
+
+        if images_b64:
+            for img_b64 in images_b64:
+                contents.append(
+                    genai_types.Part.from_bytes(
+                        data=base64.b64decode(img_b64),
+                        mime_type="image/png",
+                    )
+                )
+
+        response = await client.aio.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
                 temperature=temperature,
                 max_output_tokens=max_tokens,
                 response_mime_type="application/json",
             ),
         )
-
-        content_parts: list = [prompt]
-
-        if images_b64:
-            for img_b64 in images_b64:
-                img_bytes = base64.b64decode(img_b64)
-                pil_image = PIL.Image.open(io.BytesIO(img_bytes))
-                content_parts.append(pil_image)
-
-        response = await model.generate_content_async(content_parts)
+        self._last_call_time[model_id] = time.monotonic()
         return response.text
 
     @retry(

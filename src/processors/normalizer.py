@@ -236,12 +236,21 @@ class PlanNormalizer:
                 cleaned[list_field] = [str(val)] if val else []
 
         # ── 6. Build and validate ISPPlan ─────────────────────────
+        # FIX CRÍTICO: El LLM a veces extrae terminos_condiciones del
+        # HTML de planes. Hay que eliminarlo del dict ANTES de construir
+        # ISPPlan, porque lo inyectamos explícitamente abajo con el texto
+        # oficial del TCHTMLScraper. Sin este pop → TypeError duplicado.
+        cleaned.pop("terminos_condiciones", None)
+
+        # Determinar T&C a usar (TCHTMLScraper tiene prioridad absoluta)
+        tc_text = terminos_condiciones_raw[:5000] if terminos_condiciones_raw else None
+
         try:
             plan = ISPPlan(
                 fecha=extraction_dt,
                 empresa=company_info.empresa,
                 marca=company_info.marca,
-                terminos_condiciones=terminos_condiciones_raw or None,
+                terminos_condiciones=tc_text,
                 **{
                     k: v
                     for k, v in cleaned.items()

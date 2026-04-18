@@ -25,6 +25,20 @@ from pathlib import Path
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+# Importación segura de mistralai al nivel del módulo
+# mistralai v2 el cliente principal está en mistralai.client.sdk
+try:
+    from mistralai.client.sdk import Mistral as _MistralClient
+    _MISTRAL_AVAILABLE = True
+except ImportError:
+    try:
+        # Fallback para v1 (por compatibilidad)
+        from mistralai import Mistral as _MistralClient  # type: ignore
+        _MISTRAL_AVAILABLE = True
+    except ImportError:
+        _MistralClient = None  # type: ignore
+        _MISTRAL_AVAILABLE = False
+
 
 class MistralVisionClient:
     """Cliente Mistral Pixtral para extracción visual de planes ISP.
@@ -62,8 +76,8 @@ class MistralVisionClient:
 
     @property
     def is_available(self) -> bool:
-        """True si la API key está configurada."""
-        return bool(self._api_key)
+        """True si mistralai está instalado Y la API key está configurada."""
+        return _MISTRAL_AVAILABLE and bool(self._api_key)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -86,12 +100,17 @@ class MistralVisionClient:
             Lista de planes crudos extraídos de la imagen.
         """
         if not self.is_available:
-            logger.warning("Mistral no disponible — API key faltante")
+            if not _MISTRAL_AVAILABLE:
+                logger.warning(
+                    "Mistral SDK no instalado. "
+                    "Ejecuta: uv add mistralai"
+                )
+            else:
+                logger.warning("Mistral no disponible — API key faltante")
             return []
 
-        from mistralai import Mistral
-
-        client = Mistral(api_key=self._api_key)
+        # Usar el cliente importado al nivel del módulo (sin import lazy)
+        client = _MistralClient(api_key=self._api_key)
 
         prompt = self._build_prompt(marca=marca, context=tile_context)
 
@@ -112,7 +131,11 @@ class MistralVisionClient:
         ]
 
         try:
-            response = client.chat.complete(
+            # mistralai v2: usar chat.complete (sin _async; el cliente es sync)
+            # Para async usamos asyncio.to_thread para no bloquear el event loop
+            import asyncio
+            response = await asyncio.to_thread(
+                client.chat.complete,
                 model=self._model,
                 messages=messages,
                 response_format={"type": "json_object"},

@@ -33,7 +33,7 @@ dependencies = [
     "lxml>=5.2.0",              # Parser XML/HTML rápido para BS4
     # ── AI / LLM ────────────────────────────────────────────────
     "openai>=1.30.0",           # GPT-4o-mini + GPT-4o Vision
-    "google-generativeai>=0.5.0", # Gemini (Fallback/Alternativa)
+    # Gemini (Fallback/Alternativa)
     # ── Data Validation ─────────────────────────────────────────
     "pydantic>=2.7.0",          # V2: Schema validation enterprise
     # ── Data Processing ─────────────────────────────────────────
@@ -47,6 +47,7 @@ dependencies = [
     "rich>=13.7.0",             # CLI output profesional
     "fake-useragent>=1.5.0",    # User-Agent rotation
     "mistralai>=1.0.0",
+    "google-genai>=1.73.1",
 ]
 
 [project.optional-dependencies]
