@@ -1,3 +1,4 @@
+# src/utils/company_registry.py
 """
 Static company registry mapping ISP brands to legal entities.
 
