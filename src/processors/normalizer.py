@@ -479,7 +479,12 @@ def _parse_float(val: Any) -> float | None:
         if "," in cleaned and "." not in cleaned:
             cleaned = cleaned.replace(",", ".")
         elif "," in cleaned and "." in cleaned:
-            cleaned = cleaned.replace(",", "")
+            last_comma = cleaned.rfind(",")
+            last_dot = cleaned.rfind(".")
+            if last_comma > last_dot:
+                cleaned = cleaned.replace(".", "").replace(",", ".")
+            else:
+                cleaned = cleaned.replace(",", "")
         try:
             result = float(cleaned)
             return result if result > 0 else None

@@ -324,7 +324,6 @@ class ISPPlan(BaseModel):
     # ── Model Config ──────────────────────────────────────────────
     model_config = {
         "str_strip_whitespace": True,
-        "validate_assignment": True,  # Re-validate on field assignment
         "populate_by_name": True,
         "json_schema_extra": {
             "examples": [

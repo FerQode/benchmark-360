@@ -245,10 +245,12 @@ def build_text_extraction_messages(
         List of message dicts with 'role' and 'content' keys
         ready for AsyncOpenAI.chat.completions.create().
     """
-    system_content = TEXT_SYSTEM_PROMPT.format(
-        isp_key=isp_key,
-        marca=marca,
-        empresa=empresa,
+    system_content = TEXT_SYSTEM_PROMPT.replace(
+        "{isp_key}", isp_key
+    ).replace(
+        "{marca}", marca
+    ).replace(
+        "{empresa}", empresa
     )
     truncated = text_content[:MAX_CONTENT_CHARS]
     chunk_note = (
@@ -290,10 +292,12 @@ def build_vision_extraction_messages(
         List of message dicts with multimodal content parts ready for
         AsyncOpenAI.chat.completions.create() with vision support.
     """
-    system_content = VISION_SYSTEM_PROMPT.format(
-        isp_key=isp_key,
-        marca=marca,
-        empresa=empresa,
+    system_content = VISION_SYSTEM_PROMPT.replace(
+        "{isp_key}", isp_key
+    ).replace(
+        "{marca}", marca
+    ).replace(
+        "{empresa}", empresa
     )
     limited = screenshots_b64[:5]
     image_parts: list[dict] = [

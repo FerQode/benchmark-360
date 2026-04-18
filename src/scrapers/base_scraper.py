@@ -339,6 +339,9 @@ class BaseISPScraper(ABC):
     ) -> tuple[str, str, list[bytes], str]:
         """Execute 3-level scraping strategy with automatic fallback."""
         
+        if not self._is_url_allowed(url):
+            return "", "", [], "blocked"
+
         # ── Strategy 1: httpx (only for non-JS sites) ─────────────
         if not self.requires_playwright():
             try:

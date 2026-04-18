@@ -39,7 +39,7 @@ SCRAPER_CONFIGS = [
     (CNTScraper,      "cnt",      "cnt.com.ec",   False),
     (ClaroScraper,    "claro",    "claro.com.ec", True),
     (XtrimScraper,    "xtrim",    "xtrim.com.ec", True),
-    (EcuanetScraper,  "ecuanet",  "ecuanet.ec",   False),
+    (EcuanetScraper,  "ecuanet",  "ecuanet.ec",   True),
     (PuntonetScraper, "puntonet", "puntonet.ec",  True),
     (AlfanetScraper,  "alfanet",  "alfanet.ec",   True),
     (FibramaxScraper, "fibramax", "fibramax.ec",  True),
