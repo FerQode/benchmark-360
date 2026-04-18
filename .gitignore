@@ -1,0 +1,66 @@
+# ─────────────────────────────────────────────────────────────────
+# Benchmark 360 - Gitignore
+# ─────────────────────────────────────────────────────────────────
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Entorno virtual (uv lo maneja en .venv)
+.venv/
+venv/
+env/
+
+# Variables de entorno (NUNCA al repo)
+.env
+.env.local
+.env.*
+!.env.example
+
+# Datos: Ignoramos el contenido pero podemos mantener la estructura
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/output/*
+!data/output/.gitkeep
+
+# Playwright
+playwright-report/
+test-results/
+
+# IDE y Editores
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Cachés de herramientas (MyPy, Pytest, Ruff)
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ⚠️ NOTA SOBRE UV:
+# uv.lock NO se debe poner aquí. SÍ debe commitearse.
+# Es el equivalente exacto que garantiza la reproducibilidad.
