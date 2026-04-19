@@ -51,7 +51,7 @@ jobs:
       # ── 3. Instalar dependencias ──────────────────────────
       - name: Instalar dependencias del proyecto
         run: |
-          uv pip install --system -r pyproject.toml
+          uv pip install --system -e ".[dev]"
           playwright install chromium --with-deps
 
       # ── 4. Ejecutar pipeline principal ────────────────────
