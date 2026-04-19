@@ -88,6 +88,16 @@ class MultiProviderAdapter:
             "fallback_events": 0,
         }
 
+    @property
+    def is_available(self) -> bool:
+        """Indica si el orquestador está disponible (siempre True por diseño)."""
+        return True
+
+    @property
+    def provider_name(self) -> str:
+        """Retorna el nombre del adaptador (compatibilidad backward)."""
+        return self.__class__.__name__
+
     # ── Interfaz Pública (Compatible con GeminiAdapter) ───────────
 
     async def generate(

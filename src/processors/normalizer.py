@@ -45,6 +45,7 @@ from src.processors.llm_processor import LLMExtractionResult
 from src.processors.pys_catalog import normalize_pys_detalle
 from src.processors.vision_processor import VisionExtractionResult
 from src.utils.company_registry import CompanyInfo
+from src.processors.hallucination_detector import HallucinationDetector
 
 # ─────────────────────────────────────────────────────────────────
 # IVA Constants
@@ -207,6 +208,18 @@ class PlanNormalizer:
         if not raw.get("nombre_plan"):
             logger.debug("[{}] Skipping plan with no nombre_plan", isp_key)
             return None
+
+        # ── 0. Validación de Alucinaciones Semánticas ───────────────
+        if HallucinationDetector.detect(raw, isp_key):
+            reason = HallucinationDetector.get_reason(raw, isp_key)
+            logger.warning(
+                "ALUCINACIÓN DETECTADA | ISP: {} | Plan: {} | Razón: {}",
+                isp_key,
+                raw.get("nombre_plan", "unknown"),
+                reason
+            )
+            raw["is_hallucination"] = True
+            raw["hallucination_reason"] = reason
 
         # ── 1. Clean numeric fields ───────────────────────────────
         cleaned = self._clean_numeric_fields(raw)

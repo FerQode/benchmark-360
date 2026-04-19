@@ -141,9 +141,22 @@ async def main() -> int:
 
     # 3. Mostrar reporte de sesión LLM
     if not args.dry_run:
-        orchestrator._factory.print_session_report()
+        orchestrator._llm_factory.print_session_report()
+        print_quality_report(orchestrator.metrics)
 
     return 0 if report.total_plans > 0 else 1
+
+
+def print_quality_report(metrics):
+    print("\n" + "="*60)
+    print("📊 BENCHMARK 360 - REPORTE DE CALIDAD")
+    print("="*60)
+    print(f"✅ Extracción híbrida (sin LLM): {metrics['hybrid_plans']} planes")
+    print(f"🤖 Extracción con LLM: {metrics['llm_plans']} planes")
+    print(f"🚫 Alucinaciones detectadas: {metrics['hallucinations']}")
+    print(f"💵 Costo estimado: ${metrics.get('estimated_cost', 0.0):.4f}")
+    print(f"⏱️ Tiempo total: {metrics.get('duration', 0.0):.1f}s")
+    print("="*60)
 
 
 if __name__ == "__main__":

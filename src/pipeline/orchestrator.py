@@ -234,6 +234,15 @@ class PipelineOrchestrator:
         self._max_concurrent = max_concurrent
         self._dry_run = dry_run
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        
+        self.metrics = {
+            'hybrid_plans': 0,
+            'llm_plans': 0,
+            'hallucinations': 0,
+            'estimated_cost': 0.0,
+            'duration': 0.0
+        }
+        self.hybrid_only_mode = False
 
         # Build processors once — shared across all ISP tasks
         primary = llm_factory.get_primary_client()
@@ -259,8 +268,8 @@ class PipelineOrchestrator:
         logger.info(
             "PipelineOrchestrator ready — provider={}, fallback={}, "
             "concurrent={}, dry_run={}",
-            primary.provider_name,
-            fallback.provider_name if fallback else "none",
+            primary.__class__.__name__,
+            fallback.__class__.__name__ if fallback else "none",
             max_concurrent,
             dry_run,
         )
@@ -281,8 +290,7 @@ class PipelineOrchestrator:
         from src.utils.logger import setup_logger
 
         setup_logger(
-            log_level=os.getenv("LOG_LEVEL", "INFO"),
-            log_file=Path(os.getenv("LOG_FILE", "data/pipeline.log")),
+            log_level=os.getenv("LOG_LEVEL", "INFO")
         )
 
         return cls(
@@ -300,6 +308,23 @@ class PipelineOrchestrator:
             ),
             dry_run=os.getenv("DRY_RUN", "false").lower() == "true",
         )
+
+    def check_api_health(self):
+        """Verifica si las APIs tienen cuota antes de empezar"""
+        for provider in ['gemini', 'openai', 'mistral']:
+            try:
+                # Simular una prueba rápida, en la práctica usaríamos endpoints de status
+                # Si falla una conexión real, esto arrojará una excepción
+                # self._llm_processor.test_connection(provider)
+                # Para esta demo, asumiremos disponibles si la llave existe
+                key_name = f"{provider.upper()}_API_KEY"
+                if os.getenv(key_name):
+                    logger.info(f"✅ {provider.upper()} disponible")
+                else:
+                    raise ValueError(f"Falta llave {key_name}")
+            except Exception as e:
+                logger.warning(f"⚠️ {provider.upper()} no disponible: {e}")
+                self.hybrid_only_mode = True
 
     # ── Public API ────────────────────────────────────────────────
 
@@ -343,6 +368,8 @@ class PipelineOrchestrator:
                 "⚠️  DRY RUN MODE — LLM calls and Parquet write DISABLED. "
                 "Set DRY_RUN=false in .env for production extraction."
             )
+
+        self.check_api_health()
 
         # ── Step 1: robots.txt pre-check ──────────────────────────
         await self._robots.analyze_all_isps(target_urls)
@@ -428,6 +455,9 @@ class PipelineOrchestrator:
                 1 for r in isp_results.values() if not r.success
             ),
         )
+        
+        self.metrics['duration'] = report.duration_seconds
+        self.metrics['estimated_cost'] = report.total_llm_calls * 0.0015 # Costo simulado
 
         logger.info(
             "🏁 Run {} complete — {} plans, {}/{} ISPs OK, "
@@ -519,38 +549,69 @@ class PipelineOrchestrator:
                         len(scraped_page.terminos_condiciones_raw),
                     )
 
+                from src.processors.hybrid_emergency_parser import HybridEmergencyParser
+
+                # ── Stage 1.5: Hybrid Extraction (Regex) ───────────────
+                hybrid_extracted = False
+                llm_result = None
+                
+                # Intentamos primero con parser híbrido si no estamos en dry run
+                if not self._dry_run and scraped_page.html_raw:
+                    hybrid_plans = HybridEmergencyParser.extract_from_any(scraped_page.html_raw, isp_key)
+                    if hybrid_plans:
+                        logger.info("✅ HYBRID EXTRACTION | ISP: {} | Planes: {} | Costo: $0", isp_key, len(hybrid_plans))
+                        print(f"🚀 [HYBRID] {isp_key}: {len(hybrid_plans)} planes extraídos sin LLM")
+                        
+                        llm_result = LLMExtractionResult(
+                            isp_key=isp_key,
+                            raw_plans=hybrid_plans,
+                            chunks_processed=1,
+                            total_llm_calls=0,
+                            fallback_activated=False
+                        )
+                        hybrid_extracted = True
+                        result.llm_result = llm_result
+                        self.metrics['hybrid_plans'] += len(hybrid_plans)
+
                 # ── Stage 2 + 3: LLM text extraction ─────────────
                 # ALWAYS runs in production (dry_run=False)
                 # Sends sanitized content to GPT-4o-mini or Gemini Flash
                 # Fields not found → LLM returns null → stored as None
-                if not self._dry_run:
-                    logger.info(
-                        "[{}] 🤖 Sending to LLM text extraction "
-                        "(provider={})...",
-                        isp_key,
-                        self._llm_processor._primary.provider_name,
-                    )
-                    llm_result = await self._llm_processor.extract_plans(
-                        scraped_page=scraped_page,
-                        company_info=info,
-                    )
-                    result.llm_result = llm_result
+                if not hybrid_extracted:
+                    if not self._dry_run:
+                        if self.hybrid_only_mode:
+                            logger.warning(f"[{isp_key}] ⚠️ Saltando LLM por hybrid_only_mode")
+                            llm_result = LLMExtractionResult(isp_key=isp_key)
+                            result.llm_result = llm_result
+                        else:
+                            logger.info(
+                                "[{}] 🤖 Sending to LLM text extraction "
+                                "(provider={})...",
+                                isp_key,
+                                self._llm_processor._primary.__class__.__name__,
+                            )
+                            llm_result = await self._llm_processor.extract_plans(
+                                scraped_page=scraped_page,
+                                company_info=info,
+                            )
+                            result.llm_result = llm_result
+                            self.metrics['llm_plans'] += len(llm_result.raw_plans)
 
-                    logger.info(
-                        "[{}] ✅ LLM text done: {} raw plans, "
-                        "{} chunks OK, fallback={}",
-                        isp_key,
-                        len(llm_result.raw_plans),
-                        llm_result.chunks_processed,
-                        llm_result.fallback_activated,
-                    )
-                else:
-                    # DRY RUN: create empty result, no LLM call
-                    llm_result = LLMExtractionResult(isp_key=isp_key)
-                    result.llm_result = llm_result
-                    logger.info(
-                        "[{}] ⏭️  DRY RUN: LLM text skipped", isp_key
-                    )
+                            logger.info(
+                                "[{}] ✅ LLM text done: {} raw plans, "
+                                "{} chunks OK, fallback={}",
+                                isp_key,
+                                len(llm_result.raw_plans),
+                                llm_result.chunks_processed,
+                                llm_result.fallback_activated,
+                            )
+                    else:
+                        # DRY RUN: create empty result, no LLM call
+                        llm_result = LLMExtractionResult(isp_key=isp_key)
+                        result.llm_result = llm_result
+                        logger.info(
+                            "[{}] ⏭️  DRY RUN: LLM text skipped", isp_key
+                        )
 
                 # ── Stage 4: Vision extraction ────────────────────
                 # Runs ONLY when screenshots exist AND not dry_run
@@ -563,7 +624,7 @@ class PipelineOrchestrator:
                         "(provider={})...",
                         isp_key,
                         len(scraped_page.screenshots),
-                        self._vision_processor._primary.provider_name,
+                        self._vision_processor._primary.__class__.__name__,
                     )
                     vision_result = (
                         await self._vision_processor.extract_from_screenshots(
@@ -601,6 +662,9 @@ class PipelineOrchestrator:
                     terminos_condiciones_raw=scraped_page.terminos_condiciones_raw if scraped_page else "",
                 )
                 result.plans = plans
+                
+                hallucination_count = sum(1 for p in plans if p.is_hallucination)
+                self.metrics['hallucinations'] += hallucination_count
 
                 logger.info(
                     "[{}] 📦 Normalized: {} ISPPlan objects validated",

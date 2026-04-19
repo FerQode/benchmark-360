@@ -351,6 +351,62 @@ ISP_STRATEGIES: dict[str, ISPStrategy] = {
         specific_plan_selectors=["[class*='plan']", ".precio"],
         notes="Marca Puntonet migró a Celerity — misma empresa",
     ),
+
+    "starlink": ISPStrategy(
+        isp_key="starlink",
+        empresa="STARLINK ECUADOR S.A.",
+        marca="Starlink",
+        pages=[
+            ISPPageTarget(
+                url="https://www.starlink.com/ec/residential",
+                page_type=PageType.PLANS_HOME,
+                use_vision=True,
+                use_playwright=True,
+                priority=1,
+                description="Starlink Residential Plans",
+            ),
+            ISPPageTarget(
+                url="https://www.starlink.com/legal",
+                page_type=PageType.TERMS_CONDITIONS,
+                use_vision=False,
+                use_playwright=False,
+                priority=2,
+                description="T&C Starlink",
+            ),
+        ],
+    ),
+
+    "hughesnet": ISPStrategy(
+        isp_key="hughesnet",
+        empresa="HUGHES DE ECUADOR S.A.",
+        marca="HughesNet",
+        pages=[
+            ISPPageTarget(
+                url="https://www.hughesnet.com.ec/planes",
+                page_type=PageType.PLANS_HOME,
+                use_vision=True,
+                use_playwright=True,
+                priority=1,
+                description="HughesNet Plans",
+            ),
+        ],
+    ),
+
+    "dfibra": ISPStrategy(
+        isp_key="dfibra",
+        empresa="DIRECTV ECUADOR C. LTDA.",
+        marca="DFibra (DirecTV)",
+        pages=[
+            ISPPageTarget(
+                url="https://www.directv.com.ec/dfibra",
+                page_type=PageType.PLANS_HOME,
+                use_vision=True,
+                use_playwright=True,
+                priority=1,
+                description="DFibra Plans",
+            ),
+        ],
+    ),
 }
 
 

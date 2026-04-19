@@ -105,21 +105,11 @@ async def dismiss_cookies(page: Page, timeout_ms: int = 4_000) -> bool:
 # envuelve la nueva función dismiss_cookies() sin romper nada.
 
 class CookieConsentHandler:
-    """Wrapper de compatibilidad para código que usa la interfaz de clase.
+    """Manejo de banners de cookies para preparar la captura."""
 
-    Uso legacy:
-        handler = CookieConsentHandler(page)
-        await handler.dismiss()
-    """
-
-    def __init__(self, page: Page, timeout_ms: int = 4_000) -> None:
-        self._page = page
+    def __init__(self, timeout_ms: int = 4_000) -> None:
         self._timeout_ms = timeout_ms
 
-    async def dismiss(self) -> bool:
-        """Cierra el banner de cookies. Alias de dismiss_cookies()."""
-        return await dismiss_cookies(self._page, self._timeout_ms)
-
-    # Alias común
-    async def handle(self) -> bool:
-        return await self.dismiss()
+    async def screenshot_ready(self, page: Page, isp_key: str) -> bool:
+        """Intenta cerrar el banner antes de tomar screenshot."""
+        return await dismiss_cookies(page, self._timeout_ms)

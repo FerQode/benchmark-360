@@ -132,32 +132,28 @@ async def _fetch_and_clean(url: str, isp_key: str) -> str | None:
 # base_scraper.py importa TCHTMLScraper por clase. Esta clase envuelve
 # la nueva función extract_terms_and_conditions() sin romper nada.
 
+from dataclasses import dataclass
+
+@dataclass
+class TCFetchResult:
+    success: bool
+    raw_text: str
+    char_count: int
+    error: str = ""
+
 class TCHTMLScraper:
-    """Wrapper de compatibilidad para código que usa la interfaz de clase.
+    """Wrapper de compatibilidad para código que usa la interfaz de clase."""
 
-    Uso legacy:
-        scraper = TCHTMLScraper(terms_url="...", plans_url="...", isp_key="netlife")
-        text = await scraper.extract()
-    """
+    def __init__(self) -> None:
+        pass
 
-    def __init__(
-        self,
-        terms_url: str | None,
-        plans_url: str,
-        isp_key: str,
-    ) -> None:
-        self._terms_url = terms_url
-        self._plans_url = plans_url
-        self._isp_key = isp_key
-
-    async def extract(self) -> str:
-        """Extrae T&C. Delegado a extract_terms_and_conditions()."""
-        return await extract_terms_and_conditions(
-            terms_url=self._terms_url,
-            plans_url=self._plans_url,
-            isp_key=self._isp_key,
+    async def fetch(self, isp_key: str, tc_url: str) -> TCFetchResult:
+        """Extrae T&C usando la URL proporcionada."""
+        text = await extract_terms_and_conditions(
+            terms_url=tc_url,
+            plans_url="",
+            isp_key=isp_key,
         )
-
-    # Alias común
-    async def scrape(self) -> str:
-        return await self.extract()
+        if text and "no disponibles" not in text:
+            return TCFetchResult(success=True, raw_text=text, char_count=len(text))
+        return TCFetchResult(success=False, raw_text="", char_count=0, error="Falló extracción")

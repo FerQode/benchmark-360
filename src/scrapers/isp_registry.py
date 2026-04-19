@@ -65,6 +65,7 @@ class ISPConfig:
 # ── Registro Central de ISPs ──────────────────────────────────────
 
 ISP_REGISTRY: dict[str, ISPConfig] = {
+    # --- COMPETENCIA NACIONAL (FIBRA/COBRE) ---
     "netlife": ISPConfig(
         brand="Netlife",
         legal_name="MEGADATOS S.A.",
@@ -105,6 +106,14 @@ ISP_REGISTRY: dict[str, ISPConfig] = {
         wait_for_selector=".plan",
         notes="Mezcla planes residenciales y corporativos — HTML generalmente bien estructurado.",
     ),
+    "celerity": ISPConfig(
+        brand="Celerity",
+        legal_name="PUNTONET S.A.",
+        plans_url="https://www.celerity.ec/",
+        scraping_mode=ScrapingMode.HTTPX,
+        plan_selectors=["[class*='plan']", ".precio"],
+        notes="Rebrandeada desde Puntonet — HTML relativamente estático.",
+    ),
     "ecuanet": ISPConfig(
         brand="Ecuanet",
         legal_name="ECUADORTELECOM S.A.",
@@ -129,13 +138,37 @@ ISP_REGISTRY: dict[str, ISPConfig] = {
         plan_selectors=["[class*='plan']", ".card-plan"],
         notes="Página mayormente estática.",
     ),
-    "celerity": ISPConfig(
-        brand="Celerity",
-        legal_name="PUNTONET S.A.",
-        plans_url="https://www.celerity.ec/",
-        scraping_mode=ScrapingMode.HTTPX,
-        plan_selectors=["[class*='plan']", ".precio"],
-        notes="Rebrandeada desde Puntonet — HTML relativamente estático.",
+    
+    # --- COMPETENCIA INTERNACIONAL Y DISRUPTIVA (SATELITAL / NUEVOS ACTORES) ---
+    "starlink": ISPConfig(
+        brand="Starlink",
+        legal_name="STARLINK ECUADOR S.A.",
+        plans_url="https://www.starlink.com/ec/residential",
+        terms_url="https://www.starlink.com/legal",
+        scraping_mode=ScrapingMode.PLAYWRIGHT,
+        requires_cookie_dismiss=True,
+        plan_selectors=["[class*='price']", ".layout-container", "md-card"],
+        wait_for_selector="text='Mensual'",
+        notes="Single Page Application muy pesada (Next.js/React). Vital usar Playwright.",
+    ),
+    "hughesnet": ISPConfig(
+        brand="HughesNet",
+        legal_name="HUGHES DE ECUADOR S.A.",
+        plans_url="https://www.hughesnet.com.ec/planes",
+        scraping_mode=ScrapingMode.PLAYWRIGHT,
+        requires_cookie_dismiss=True,
+        plan_selectors=[".plan-card", ".price-box", ".offer-details"],
+        wait_for_selector=".plan-card",
+        notes="Fuerte competidor rural. Pop-ups de geolocalización.",
+    ),
+    "dfibra": ISPConfig(
+        brand="DFibra (DirecTV)",
+        legal_name="DIRECTV ECUADOR C. LTDA.",
+        plans_url="https://www.directv.com.ec/dfibra",
+        scraping_mode=ScrapingMode.PLAYWRIGHT,
+        plan_selectors=[".card-plan", ".price-container", "[class*='dfibra-plan']"],
+        wait_for_selector=".price-container",
+        notes="Entrante agresivo apalancado en base de usuarios de TV.",
     ),
 }
 

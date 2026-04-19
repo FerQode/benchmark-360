@@ -138,6 +138,8 @@ class ISPPlan(BaseModel):
         factura_anterior: Whether previous ISP invoice is required.
         terminos_condiciones: Full terms and conditions text.
         beneficios_publicitados: Advertised benefits as found on site.
+        is_hallucination: Flag indicating if the plan is likely an LLM hallucination.
+        hallucination_reason: Detailed reason if the plan is flagged as hallucination.
     """
 
     # ── 1. Temporal ───────────────────────────────────────────────
@@ -319,6 +321,14 @@ class ISPPlan(BaseModel):
     beneficios_publicitados: str | None = Field(
         default=None,
         description="Advertised benefits string as found on site",
+    )
+    is_hallucination: bool = Field(
+        default=False,
+        description="Flag indicating if the plan is likely an LLM hallucination",
+    )
+    hallucination_reason: str | None = Field(
+        default=None,
+        description="Detailed reason if the plan is flagged as hallucination",
     )
 
     # ── Model Config ──────────────────────────────────────────────
