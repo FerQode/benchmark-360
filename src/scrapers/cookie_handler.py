@@ -1,232 +1,125 @@
 # src/scrapers/cookie_handler.py
-"""
-Cookie Consent Handler — Elimina banners de cookies antes de screenshots.
+"""Manejo robusto de banners de cookies — Patrón Dismiss-and-Verify.
 
-El banner de cookies con fondo gris/oscuro contamina todos los tiles
-y confunde al LLM Vision haciéndole extraer datos incorrectos o nulos.
+Inspirado en la resiliencia de Netflix: ante sistemas impredecibles
+(banners de cookies que cambian constantemente), usar múltiples
+estrategias en cascada garantiza que el scraping no se bloquee.
 
-Estrategia:
-    1. Detectar banner por selectores conocidos (lista exhaustiva)
-    2. Hacer click en "Aceptar" / "Accept" / "Acepto"
-    3. Esperar a que el banner desaparezca del DOM
-    4. Si no hay banner → continuar sin error
-
-Google Style Docstrings — PEP8 compliant.
+Uso:
+    from src.scrapers.cookie_handler import dismiss_cookies
+    dismissed = await dismiss_cookies(page)
+    if dismissed:
+        logger.info("Banner de cookies cerrado")
 """
 
 from __future__ import annotations
 
-import asyncio
-
-from loguru import logger
 from playwright.async_api import Page
 
+from src.utils.logger import logger
 
-# ─────────────────────────────────────────────────────────────────
-# Selectores exhaustivos para botones de aceptar cookies
-# Cubre los CMP (Consent Management Platforms) más usados en Ecuador
-# ─────────────────────────────────────────────────────────────────
-
-_COOKIE_ACCEPT_SELECTORS: list[str] = [
-    # Por ID
-    "#cookiescript_accept",
-    "#accept-cookies",
-    "#cookie-accept",
-    "#acceptCookies",
-    "#btnAcceptCookies",
-    "#onetrust-accept-btn-handler",   # OneTrust (muy común)
-    "#CybotCookiebotDialogBodyButtonAccept",  # Cookiebot
-    # Por clase
-    ".cookie-accept",
-    ".accept-cookies",
-    ".btn-accept-cookies",
-    ".cookie-consent-accept",
-    "[class*='cookie'][class*='accept']",
-    "[class*='accept'][class*='cookie']",
-    # Por texto del botón (aria-label / texto visible)
+# Selectores en orden de prioridad (español primero, luego inglés genérico)
+COOKIE_DISMISS_SELECTORS: list[str] = [
     "button:has-text('Aceptar')",
-    "button:has-text('Aceptar todo')",
-    "button:has-text('Aceptar todas')",
-    "button:has-text('Accept')",
-    "button:has-text('Accept All')",
     "button:has-text('Acepto')",
-    "button:has-text('De acuerdo')",
     "button:has-text('Entendido')",
+    "button:has-text('Continuar')",
+    "button:has-text('Accept')",
+    "button:has-text('Agree')",
     "button:has-text('OK')",
-    # Genéricos de último recurso
-    "[aria-label*='accept' i]",
-    "[aria-label*='aceptar' i]",
-    "button[class*='consent']",
-]
-
-# Selectores para detectar SI existe un banner (antes de intentar click)
-_COOKIE_BANNER_PRESENCE_SELECTORS: list[str] = [
-    "#cookiescript_injected",
-    "#onetrust-banner-sdk",
-    "#CybotCookiebotDialog",
-    "[class*='cookie-banner']",
-    "[class*='cookie-notice']",
-    "[class*='consent-banner']",
-    "[id*='cookie']",
-    "[class*='gdpr']",
+    "[id*='cookie'] button",
+    "[class*='cookie'] button",
+    "[id*='consent'] button",
+    "[class*='consent'] button",
+    "[aria-label*='cookie']",
+    "[aria-label*='consent']",
+    "#accept-cookies",
+    ".accept-cookies",
+    ".cookie-accept",
+    "#cookie-accept",
 ]
 
 
-class CookieConsentHandler:
-    """Detecta y descarta banners de cookies antes de capturar screenshots.
+async def dismiss_cookies(page: Page, timeout_ms: int = 4_000) -> bool:
+    """Intenta cerrar banners de consentimiento con múltiples estrategias.
 
-    Previene que el overlay gris de cookie consent contamine los tiles
-    de screenshot enviados al LLM Vision.
+    Estrategias en orden:
+    1. Iterar selectores CSS predefinidos e intentar click.
+    2. Fallback: eliminar overlays de cookies por DOM manipulation (JS).
 
     Args:
-        timeout_ms: Tiempo máximo de espera por selector en ms.
-        wait_after_accept_ms: Espera tras aceptar para que el banner
-            desaparezca con su animación CSS.
+        page: Instancia activa de la página Playwright.
+        timeout_ms: Tiempo máximo por intento de selector.
 
-    Example:
-        >>> handler = CookieConsentHandler()
-        >>> dismissed = await handler.dismiss(page)
-        >>> print("Banner eliminado" if dismissed else "Sin banner")
+    Returns:
+        True si se detectó y cerró algún banner, False en caso contrario.
     """
+    log = logger.bind(isp="cookie_handler", phase="cookie_dismiss")
 
-    def __init__(
-        self,
-        timeout_ms: int = 3000,
-        wait_after_accept_ms: int = 800,
-    ) -> None:
-        self._timeout_ms = timeout_ms
-        self._wait_after_ms = wait_after_accept_ms
-
-    async def dismiss(self, page: Page, isp_key: str = "") -> bool:
-        """Detecta y hace click en el botón de aceptar cookies.
-
-        Prueba cada selector de la lista hasta encontrar uno clickeable.
-        Si no hay banner de cookies, retorna False sin error.
-
-        Args:
-            page: Objeto Page de Playwright con la página cargada.
-            isp_key: Clave del ISP para logging contextual.
-
-        Returns:
-            True si se encontró y descartó un banner.
-            False si no se detectó ningún banner (sitio sin cookies popup).
-        """
-        # Verificar si existe un banner antes de intentar click
-        banner_present = await self._detect_banner_presence(page)
-
-        if not banner_present:
-            logger.debug(
-                "[{}] Sin banner de cookies detectado", isp_key
-            )
-            return False
-
-        logger.info(
-            "[{}] 🍪 Banner de cookies detectado → intentando dismiss",
-            isp_key,
-        )
-
-        # Probar cada selector de aceptar
-        for selector in _COOKIE_ACCEPT_SELECTORS:
-            try:
-                element = await page.wait_for_selector(
-                    selector,
-                    timeout=self._timeout_ms,
-                    state="visible",
-                )
-                if element:
-                    await element.click()
-                    await asyncio.sleep(self._wait_after_ms / 1000)
-                    logger.info(
-                        "[{}] ✅ Cookie banner dismissado con selector: {}",
-                        isp_key,
-                        selector,
-                    )
-                    return True
-
-            except Exception:
-                continue  # Este selector no funcionó → probar el siguiente
-
-        # Último recurso: tecla Escape
+    # Estrategia 1: Selectores CSS con timeout rápido
+    for selector in COOKIE_DISMISS_SELECTORS:
         try:
-            await page.keyboard.press("Escape")
-            await asyncio.sleep(0.3)
-            logger.warning(
-                "[{}] ⚠️  Cookie banner: ningún selector funcionó, "
-                "intenté Escape como último recurso",
-                isp_key,
-            )
+            button = page.locator(selector).first
+            # Usar 500ms para no bloquear — la mayoría de banners son rápidos
+            if await button.is_visible(timeout=500):
+                await button.click()
+                log.info(f"Cookie banner cerrado con: {selector}")
+                # Espera breve para que el banner desaparezca del DOM
+                await page.wait_for_timeout(800)
+                return True
         except Exception:
-            pass
+            continue  # Selector no encontrado — intentar el siguiente
 
-        return False
-
-    async def _detect_banner_presence(self, page: Page) -> bool:
-        """Verifica si hay algún banner de cookies visible en la página.
-
-        Args:
-            page: Página Playwright cargada.
-
-        Returns:
-            True si se detecta un elemento de banner de cookies.
-        """
-        for selector in _COOKIE_BANNER_PRESENCE_SELECTORS:
-            try:
-                element = await page.query_selector(selector)
-                if element:
-                    is_visible = await element.is_visible()
-                    if is_visible:
-                        return True
-            except Exception:
-                continue
-        return False
-
-    async def screenshot_ready(
-        self,
-        page: Page,
-        isp_key: str = "",
-    ) -> None:
-        """Prepara la página para screenshots limpios.
-
-        Ejecuta en orden:
-          1. Dismiss cookie banner
-          2. Ocultar overlays residuales via CSS inject
-          3. Scroll al top para empezar desde arriba
-          4. Esperar a que lazy-loaded images se carguen
-
-        Args:
-            page: Página Playwright con el sitio cargado.
-            isp_key: Clave del ISP para logging.
-        """
-        # 1. Dismiss banner
-        await self.dismiss(page, isp_key)
-
-        # 2. Inyectar CSS para ocultar overlays residuales
-        await page.add_style_tag(content="""
-            /* Ocultar modales de cookies y overlays residuales */
-            [id*='cookie'],
-            [class*='cookie-banner'],
-            [class*='cookie-notice'],
-            [class*='consent-banner'],
-            [class*='gdpr'],
-            [id*='onetrust'],
-            .cookie-overlay,
-            body > div[class*='overlay'] {
-                display: none !important;
-                visibility: hidden !important;
-                opacity: 0 !important;
-            }
-            /* Restaurar scroll del body si el modal lo bloqueó */
-            body, html {
-                overflow: auto !important;
+    # Estrategia 2: DOM Manipulation via JavaScript (último recurso)
+    try:
+        removed_count: int = await page.evaluate("""
+            () => {
+                const selectors = [
+                    '[class*="cookie"]', '[id*="cookie"]',
+                    '[class*="consent"]', '[id*="consent"]',
+                    '[class*="banner"]', '[class*="overlay"]',
+                    '[class*="modal"]'
+                ];
+                let count = 0;
+                selectors.forEach(sel => {
+                    document.querySelectorAll(sel).forEach(el => {
+                        // Solo eliminar elementos pequeños (banners, no el body)
+                        if (el.innerText && el.innerText.length < 800) {
+                            el.remove();
+                            count++;
+                        }
+                    });
+                });
+                return count;
             }
         """)
+        if removed_count > 0:
+            log.debug(f"Fallback JS: {removed_count} elemento(s) eliminados del DOM")
+    except Exception as exc:
+        log.debug(f"Fallback JS no aplicable: {exc}")
 
-        # 3. Scroll al top
-        await page.evaluate("window.scrollTo(0, 0)")
+    return False
 
-        # 4. Esperar lazy images
-        await asyncio.sleep(1.0)
+# ── Backward Compatibility ─────────────────────────────────────
+# base_scraper.py importa CookieConsentHandler por clase. Esta clase
+# envuelve la nueva función dismiss_cookies() sin romper nada.
 
-        logger.info(
-            "[{}] 📸 Página lista para screenshots limpios", isp_key
-        )
+class CookieConsentHandler:
+    """Wrapper de compatibilidad para código que usa la interfaz de clase.
+
+    Uso legacy:
+        handler = CookieConsentHandler(page)
+        await handler.dismiss()
+    """
+
+    def __init__(self, page: Page, timeout_ms: int = 4_000) -> None:
+        self._page = page
+        self._timeout_ms = timeout_ms
+
+    async def dismiss(self) -> bool:
+        """Cierra el banner de cookies. Alias de dismiss_cookies()."""
+        return await dismiss_cookies(self._page, self._timeout_ms)
+
+    # Alias común
+    async def handle(self) -> bool:
+        return await self.dismiss()

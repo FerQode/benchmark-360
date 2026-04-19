@@ -87,7 +87,16 @@ async def main() -> int:
     """Run pipeline and return exit code (0=success, 1=no plans)."""
     args = parse_args()
 
-    # Build orchestrator from .env
+    # 1. Validar APIs antes de iniciar
+    from src.processors.provider_registry import validate_env_on_startup
+    env_status = validate_env_on_startup()
+    available = sum(env_status.values())
+
+    if available == 0 and not args.dry_run:
+        print("\n❌ NINGÚN proveedor LLM configurado. Pipeline abortado.")
+        return 1
+    
+    # 2. Iniciar orquestador
     orchestrator = PipelineOrchestrator.from_env()
 
     # CLI flags override .env
@@ -129,6 +138,10 @@ async def main() -> int:
             "\n⚠️  No Parquet file to preview "
             "(dry_run=True or no plans extracted)"
         )
+
+    # 3. Mostrar reporte de sesión LLM
+    if not args.dry_run:
+        orchestrator._factory.print_session_report()
 
     return 0 if report.total_plans > 0 else 1
 
