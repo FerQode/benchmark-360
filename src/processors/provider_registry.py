@@ -100,30 +100,49 @@ class ProviderConfig:
     cost_per_1k_input_usd: float = 0.0
     _last_request_ts: float = field(default=0.0, repr=False)
     
-    # Lock para rate limiting coroutine-safe
+    _api_keys_pool: list[str] = field(default_factory=list, repr=False)
+    _current_key_idx: int = field(default=0, repr=False)
     _rate_lock: asyncio.Lock | None = field(default=None, repr=False)
     _consecutive_failures: int = field(default=0, repr=False)
 
     def __post_init__(self) -> None:
-        """Inicializa el Lock en el event loop activo.
-
-        asyncio.Lock debe crearse dentro de una corrutina o cuando
-        hay un event loop activo. Usar __post_init__ garantiza esto
-        al momento de instanciar el ProviderConfig, no al importar.
-        """
-        # Inicialización diferida del Lock — compatible con Python 3.12
+        """Inicializa el Lock en el event loop activo."""
         object.__setattr__(self, "_rate_lock", asyncio.Lock())
 
     # ── Propiedades ───────────────────────────────────────────────
 
     @property
     def api_key(self) -> str | None:
-        """Retorna la API key desde las variables de entorno.
+        """Retorna la API key desde las variables de entorno, soportando arrays.
 
         Returns:
             Valor de la variable de entorno, o None si no existe.
         """
-        return os.getenv(self.api_key_env)
+        if not self._api_keys_pool:
+            val = os.getenv(self.api_key_env)
+            if val:
+                # Soporte para array de keys separadas por coma
+                self._api_keys_pool = [k.strip() for k in val.split(",") if k.strip()]
+        
+        if not self._api_keys_pool:
+            return None
+            
+        return self._api_keys_pool[self._current_key_idx % len(self._api_keys_pool)]
+
+    def rotate_key(self) -> bool:
+        """Rota a la siguiente API key disponible en el pool.
+        
+        Returns:
+            True si se rotó exitosamente, False si ya no hay más keys.
+        """
+        if len(self._api_keys_pool) <= 1:
+            return False
+            
+        if self._current_key_idx < len(self._api_keys_pool) - 1:
+            self._current_key_idx += 1
+            return True
+            
+        return False
 
     @property
     def is_available(self) -> bool:

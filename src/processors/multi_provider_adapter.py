@@ -393,11 +393,25 @@ class MultiProviderAdapter:
         provider.record_usage(success=False)
 
         if "429" in error_str or "rate_limit" in error_str:
-            logger.warning(f"  🔴 [{provider.name}] Quota agotada (429) → fallback")
-            provider.status = ProviderStatus.QUOTA_EXHAUSTED
+            if provider.rotate_key():
+                logger.warning(f"  🔴 [{provider.name}] Quota agotada → Rotando a Key {provider._current_key_idx + 1}")
+                # Forzamos la recreación del cliente para usar la nueva key
+                if provider.name in self._client_pool:
+                    del self._client_pool[provider.name]
+                # Resetear fallos para darle oportunidad a la nueva key
+                provider._consecutive_failures = 0
+            else:
+                logger.warning(f"  🔴 [{provider.name}] Quota agotada y sin más keys (429) → fallback")
+                provider.status = ProviderStatus.QUOTA_EXHAUSTED
         elif "401" in error_str or "unauthorized" in error_str:
-            logger.error(f"  🔑 [{provider.name}] API key inválida → DISABLED")
-            provider.status = ProviderStatus.DISABLED
+            if provider.rotate_key():
+                logger.warning(f"  🔑 [{provider.name}] Key inválida → Rotando a Key {provider._current_key_idx + 1}")
+                if provider.name in self._client_pool:
+                    del self._client_pool[provider.name]
+                provider._consecutive_failures = 0
+            else:
+                logger.error(f"  🔑 [{provider.name}] API key inválida y sin más keys → DISABLED")
+                provider.status = ProviderStatus.DISABLED
         elif "timeout" in error_str or "timed out" in error_str:
             logger.warning(f"  ⏱️  [{provider.name}] Timeout → fallback")
         else:

@@ -81,8 +81,21 @@ def main() -> None:
 
     # -- 5. Guardar Parquet enriquecido ---------------------------------
     df.to_parquet(parquet_path, compression=settings.parquet_compression, index=False)
+    
+    # -- 6. Backup Histórico (Trazabilidad) -----------------------------
+    from datetime import datetime
+    import shutil
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    history_dir = Path(settings.output_dir) / "history" / timestamp
+    history_dir.mkdir(parents=True, exist_ok=True)
+    
+    shutil.copy2(parquet_path, history_dir / "benchmark_industria.parquet")
+    shutil.copy2(alerts_path, history_dir / "competitive_alerts.csv")
+    
     print(f"\n[DONE] Parquet final guardado:")
     print(f"       Ruta:      {parquet_path}")
+    print(f"       Histórico: {history_dir}")
     print(f"       Registros: {len(df)}")
     print(f"       Columnas:  {len(df.columns)}")
     print(f"       ISPs:      {df['marca'].nunique()}")
