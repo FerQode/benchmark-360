@@ -2,8 +2,8 @@
 
 **Inteligencia Competitiva Automatizada para el Mercado de Internet Fijo en Ecuador**
 
-[![CI Tests](https://github.com/[USUARIO]/benchmark_360/actions/workflows/tests.yml/badge.svg)](https://github.com/[USUARIO]/benchmark_360/actions/workflows/tests.yml)
-[![Daily Pipeline](https://github.com/[USUARIO]/benchmark_360/actions/workflows/daily_benchmark.yml/badge.svg)](https://github.com/[USUARIO]/benchmark_360/actions/workflows/daily_benchmark.yml)
+[![CI Tests](https://github.com/FerQode/benchmark-360/actions/workflows/tests.yml/badge.svg)](https://github.com/FerQode/benchmark-360/actions/workflows/tests.yml)
+[![Daily Pipeline](https://github.com/FerQode/benchmark-360/actions/workflows/daily_benchmark.yml/badge.svg)](https://github.com/FerQode/benchmark-360/actions/workflows/daily_benchmark.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -33,8 +33,8 @@ accionable para equipos de Pricing y Producto.
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/[USUARIO]/benchmark_360.git
-cd benchmark_360
+git clone https://github.com/FerQode/benchmark-360.git
+cd benchmark-360
 
 # 2. Configurar API keys
 cp .env.example .env
@@ -53,8 +53,8 @@ docker compose up --build
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/[USUARIO]/benchmark_360.git
-cd benchmark_360
+git clone https://github.com/FerQode/benchmark-360.git
+cd benchmark-360
 
 # 2. Instalar uv (gestor de paquetes)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -217,7 +217,9 @@ Consultar `docs/aws_roadmap.md` para el plan detallado de migracion.
 
 ## Equipo
 
-**DataCrafters** — Hackathon Interact2Hack / Netlife 2026
+**Fernando Quinapallo** — DataCrafters / Hackathon Interact2Hack / Netlife 2026
+- 💻 **Repositorio Público:** [https://github.com/FerQode/benchmark-360](https://github.com/FerQode/benchmark-360) (¡Te invitamos a revisar detenidamente nuestra forma de trabajo y código fuente!)
+- 🔗 **LinkedIn:** [www.linkedin.com/in/fernando-quinapallo-dev](https://www.linkedin.com/in/fernando-quinapallo-dev)
 
 ---
 
