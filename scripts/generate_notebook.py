@@ -161,7 +161,12 @@ def safe_parse_dict(v):
 
 def safe_parse_list(v):
     \"\"\"Parsea listas de forma segura.\"\"\"
-    if pd.isna(v) or str(v) in ("", "[]", "None"):
+    try:
+        if pd.isna(v).any() if isinstance(v, (np.ndarray, pd.Series, list)) else pd.isna(v):
+            return []
+    except Exception:
+        pass
+    if str(v) in ("", "[]", "None"):
         return []
     try:
         r = ast.literal_eval(str(v))

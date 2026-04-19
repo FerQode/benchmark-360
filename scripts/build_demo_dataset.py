@@ -173,6 +173,46 @@ def build_demo_dataset() -> pd.DataFrame:
          "velocidad_upload_mbps": 75.0, "precio_plan": 22.00,
          "tecnologia": "fibra_optica", "meses_contrato": 12,
          "pys_adicionales": 0, "pys_adicionales_detalle": {}},
+        # ── NUEVOS PLANES (Requisito 20+ registros) ───────────────
+        # Netlife Premium
+        {**base, "empresa": "MEGADATOS S.A.", "marca": "Netlife",
+         "nombre_plan": "Netlife Ultra 1000", "velocidad_download_mbps": 1000.0,
+         "velocidad_upload_mbps": 500.0, "precio_plan": 55.00,
+         "tecnologia": "fibra_optica", "meses_contrato": 24,
+         "pys_adicionales": 3, "pys_adicionales_detalle": {
+             "disney_plus": {"tipo_plan": "premium", "meses": 24, "categoria": "streaming"},
+             "hbo_max": {"tipo_plan": "standard", "meses": 12, "categoria": "streaming"},
+             "netlife_defense": {"tipo_plan": "premium", "meses": 24, "categoria": "seguridad"},
+         }},
+
+        # CNT Basico
+        {**base, "empresa": "CORPORACION NACIONAL DE TELECOMUNICACIONES CNT EP",
+         "marca": "CNT", "nombre_plan": "CNT Fibra 50",
+         "velocidad_download_mbps": 50.0, "velocidad_upload_mbps": 25.0,
+         "precio_plan": 18.00, "tecnologia": "fibra_optica", "meses_contrato": 12,
+         "pys_adicionales": 0, "pys_adicionales_detalle": {}},
+
+        # Xtrim Basico
+        {**base, "empresa": "MEGAPROSER S.A.", "marca": "Xtrim",
+         "nombre_plan": "Xtrim Lite 200", "velocidad_download_mbps": 200.0,
+         "velocidad_upload_mbps": 100.0, "precio_plan": 22.00,
+         "tecnologia": "hfc", "meses_contrato": 12,
+         "pys_adicionales": 0, "pys_adicionales_detalle": {}},
+
+        # Claro Basico
+        {**base, "empresa": "CONECEL S.A.", "marca": "Claro",
+         "nombre_plan": "Claro Fibra 100", "velocidad_download_mbps": 100.0,
+         "velocidad_upload_mbps": 50.0, "precio_plan": 19.99,
+         "tecnologia": "fibra_optica", "meses_contrato": 12,
+         "precio_plan_descuento": 15.99, "descuento": 0.20, "meses_descuento": 3,
+         "pys_adicionales": 0, "pys_adicionales_detalle": {}},
+
+        # Fibramax Premium
+        {**base, "empresa": "FIBRAMAX S.A.", "marca": "Fibramax",
+         "nombre_plan": "Fibramax Ultra 700", "velocidad_download_mbps": 700.0,
+         "velocidad_upload_mbps": 350.0, "precio_plan": 17.50,
+         "tecnologia": "fibra_optica", "meses_contrato": 24,
+         "pys_adicionales": 0, "pys_adicionales_detalle": {}},
     ]
 
     # Validar cada registro con Pydantic antes de exportar
