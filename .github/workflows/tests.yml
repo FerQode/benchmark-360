@@ -1,0 +1,48 @@
+# .github/workflows/tests.yml
+# CI: Ejecutar tests en cada push/PR
+
+name: "CI Tests"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    name: "Tests Python ${{ matrix.python-version }}"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Instalar dependencias
+        run: |
+          pip install -e ".[dev]"
+          pip install scikit-learn
+
+      - name: Ejecutar tests
+        run: |
+          python -m pytest tests/ -v --no-cov --disable-warnings
+
+      - name: Verificar imports criticos
+        run: |
+          python -c "
+          from src.config.settings import get_settings
+          from src.scrapers.isp_registry import get_all_isps
+          from src.processors.strategic_labels import StrategicLabeler
+          from src.processors.market_clustering import MarketClusterer
+          from src.processors.competitive_alerts import CompetitiveAlertEngine
+          from src.utils.errors import BenchmarkError
+          print('Todos los imports OK')
+          print(f'ISPs registrados: {len(get_all_isps())}')
+          "

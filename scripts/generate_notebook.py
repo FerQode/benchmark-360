@@ -36,7 +36,7 @@ CELLS.append(md("""
 
 ---
 **Cliente:** Megadatos S.A. / Netlife  
-**Equipo:** FerQode Dev Team  
+**Equipo:** DataCrafters  
 **Fecha:** Abril 2026
 
 ---
