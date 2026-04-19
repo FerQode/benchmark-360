@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# Benchmark 360 — Docker Ignore
+# Evita copiar archivos innecesarios al contexto de build
+# ─────────────────────────────────────────────────────────────
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.mypy_cache
+.ruff_cache
+.pytest_cache
+
+# Entorno virtual
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Datos generados (se montan como volumen)
+data/output/*
+data/cache/*
+data/logs/*
+!data/output/.gitkeep
+!data/cache/.gitkeep
+!data/logs/.gitkeep
+
+# Archivos de presentacion
+*.pptx
+*.pdf
+
+# Tests (no necesarios en produccion)
+tests/
+
+# Notebook generado (se monta como volumen)
+*.ipynb
+
+# Secrets
+.env
+.env.*

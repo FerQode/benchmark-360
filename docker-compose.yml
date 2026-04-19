@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────
+# Benchmark 360 — Docker Compose
+# Uso:
+#   docker compose up              (ejecucion unica)
+#   docker compose up --build      (rebuild + ejecucion)
+#   docker compose run benchmark   (interactivo)
+# ─────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: benchmark-360
+    env_file:
+      - .env
+    volumes:
+      # Montar data/output para que los resultados persistan fuera del container
+      - ./data/output:/app/data/output
+      - ./data/cache:/app/data/cache
+      - ./data/logs:/app/data/logs
+      # Montar el notebook generado para acceso local
+      - ./benchmark_industria_notebook.ipynb:/app/benchmark_industria_notebook.ipynb
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: "no"  # Ejecucion unica, no reiniciar
+
+  # Servicio opcional: Jupyter para explorar resultados
+  notebook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: benchmark-360-notebook
+    env_file:
+      - .env
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./data/output:/app/data/output
+      - ./benchmark_industria_notebook.ipynb:/app/benchmark_industria_notebook.ipynb
+    command: >
+      jupyter notebook
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --NotebookApp.token='benchmark360'
+    profiles:
+      - notebook  # Solo se levanta con: docker compose --profile notebook up
