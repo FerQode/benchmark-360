@@ -53,6 +53,7 @@ dependencies = [
     "nbconvert>=7.17.1",
     "matplotlib>=3.10.8",
     "seaborn>=0.13.2",
+    "scikit-learn>=1.4.0",          # KMeans + KNN para segmentación de mercado
     "ipykernel>=7.2.0",
 ]
 
