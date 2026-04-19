@@ -287,19 +287,21 @@ class CompetitiveAlertEngine:
 
     def print_executive_summary(self, alerts: list[CompetitiveAlert]) -> None:
         """Imprime un resumen ejecutivo formateado para consola/notebook."""
-        separator = "═" * 70
+        separator = "=" * 70
         print(f"\n{separator}")
-        print(f"  🏢 INTELIGENCIA COMPETITIVA — {self.own_brand.upper()}")
-        print(f"  📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        print(f"  INTELIGENCIA COMPETITIVA -- {self.own_brand.upper()}")
+        print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         print(separator)
 
         by_sev = {s: [a for a in alerts if a.severity == s] for s in AlertSeverity}
-        counts = " | ".join(f"{s.value}: {len(v)}" for s, v in by_sev.items())
+        counts = " | ".join(
+            f"{s.name}: {len(v)}" for s, v in by_sev.items()
+        )
         print(f"\n  {counts}\n")
 
         for alert in alerts:
-            print(f"  {alert.severity.value}  {alert.title}")
-            print(f"    Métrica: {alert.metric}")
-            print(f"    → {alert.recommendation}\n")
+            print(f"  [{alert.severity.name}]  {alert.title}")
+            print(f"    Metrica: {alert.metric}")
+            print(f"    > {alert.recommendation}\n")
 
         print(separator)
