@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Instalar uv (gestor de paquetes requerido por el reto)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH"
 
 # Copiar solo el manifiesto primero (cache de Docker layers)
 COPY pyproject.toml ./
@@ -44,8 +44,7 @@ RUN playwright install chromium --with-deps 2>/dev/null || true
 # Copiar codigo fuente del proyecto
 COPY src/ ./src/
 COPY scripts/ ./scripts/
-COPY data/input/ ./data/input/
-COPY run_pipeline.py ./
+COPY dashboard/ ./dashboard/
 COPY pyproject.toml ./
 
 # Crear directorios de salida
@@ -70,7 +69,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 # Flujo: Pipeline → ML Enrichment → Notebook
 CMD ["sh", "-c", "\
     echo '=== Benchmark 360 — Ejecucion Containerizada ===' && \
-    python run_pipeline.py || python scripts/build_demo_dataset.py && \
+    python scripts/run_pipeline.py || python scripts/build_demo_dataset.py && \
     python scripts/enrich_and_export.py && \
     python scripts/generate_notebook.py && \
     echo '=== Pipeline completado ===' \

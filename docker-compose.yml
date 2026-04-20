@@ -49,3 +49,21 @@ services:
       --NotebookApp.token='benchmark360'
     profiles:
       - notebook  # Solo se levanta con: docker compose --profile notebook up
+
+  # Servicio Enterprise: Dashboard en Streamlit
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: benchmark-360-dashboard
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data/output:/app/data/output
+      - ./dashboard:/app/dashboard
+    command: >
+      streamlit run dashboard/app.py 
+      --server.port=8501 
+      --server.address=0.0.0.0
